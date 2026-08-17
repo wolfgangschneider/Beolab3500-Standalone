@@ -6,7 +6,7 @@
   details - do not assume this works unmodified on anything else.
 
   Board: ESP32 WROVER DevKit (upesy_wrover). RX on GPIO34 (via R3/R4
-  divider, see MclBusReader), TX on GPIO25 (via transistor Q1 switch).
+  divider, see PLBusReader), TX on GPIO25 (via transistor Q1 switch).
 
   Listens for BL3500's short "notify" frame (it sends this whenever a
   source key is pressed on its own remote) and replies with the same
@@ -25,8 +25,8 @@
 */
 
 #include <Arduino.h>
-#include "MclBusReader.hpp"
-#include "MclBusWriter.hpp"
+#include "PLBusReader.hpp"
+#include "PLBusWriter.hpp"
 #include "PLData.hpp"
 
 constexpr gpio_num_t MCL_RX_PIN = GPIO_NUM_34;
@@ -44,8 +44,8 @@ constexpr const char *MASTER_RADIO_SOUND_BITS = "0011001101001110101100000000111
 // reflected back through RX on the same bus wire
 static int suppressFrames = 0;
 
-static MclBusWriter writer(MCL_TX_PIN);
-static MclBusReader reader(MCL_RX_PIN);
+static PLBusWriter writer(MCL_TX_PIN);
+static PLBusReader reader(MCL_RX_PIN);
 
 // One GPIO per audio source, driven HIGH for whichever source is
 // currently active and LOW for all others - another project reads
@@ -94,7 +94,7 @@ void setup() {
 }
 
 void loop() {
-  // 1. wait for the next complete frame (blocks; see MclBusReader::poll)
+  // 1. wait for the next complete frame (blocks; see PLBusReader::poll)
   String bits;
   if (!reader.poll(bits)) return;
 

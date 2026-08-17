@@ -1,26 +1,26 @@
-#include "MclBusReader.hpp"
+#include "PLBusReader.hpp"
 
-MclBusReader::MclBusReader(gpio_num_t pin) : _pin(pin) {}
+PLBusReader::PLBusReader(gpio_num_t pin) : _pin(pin) {}
 
-bool IRAM_ATTR MclBusReader::onRxDone(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_data) {
+bool IRAM_ATTR PLBusReader::onRxDone(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_data) {
   BaseType_t high_task_wakeup = pdFALSE;
   QueueHandle_t queue = (QueueHandle_t) user_data;
   xQueueSendFromISR(queue, edata, &high_task_wakeup);
   return high_task_wakeup == pdTRUE;
 }
 
-uint8_t MclBusReader::classifyTcode(uint32_t us) {
+uint8_t PLBusReader::classifyTcode(uint32_t us) {
   if (us < T1_US - T_STEP / 2 || us > T5_US + T_STEP / 2) return 0;
   uint32_t nearest = (us + T_STEP / 2) / T_STEP;
   if (nearest < 1 || nearest > 5) return 0;
   return (uint8_t) nearest;
 }
 
-uint32_t MclBusReader::periodUs(const rmt_symbol_word_t &sym) {
+uint32_t PLBusReader::periodUs(const rmt_symbol_word_t &sym) {
   return sym.duration0 + sym.duration1;
 }
 
-int MclBusReader::decodeBit(int lastBit, uint8_t tcode) {
+int PLBusReader::decodeBit(int lastBit, uint8_t tcode) {
   if (lastBit == 0) {
     if (tcode == 2) return 0;
     if (tcode == 3) return 1;
@@ -31,11 +31,11 @@ int MclBusReader::decodeBit(int lastBit, uint8_t tcode) {
   return -1;
 }
 
-void MclBusReader::armReceive(int bufIdx) {
+void PLBusReader::armReceive(int bufIdx) {
   ESP_ERROR_CHECK(rmt_receive(_rxChan, _rawSymbols[bufIdx], sizeof(_rawSymbols[bufIdx]), &_rxCfg));
 }
 
-void MclBusReader::begin() {
+void PLBusReader::begin() {
   pinMode(_pin, INPUT);
 
   _rxQueue = xQueueCreate(4, sizeof(rmt_rx_done_event_data_t));
@@ -60,7 +60,7 @@ void MclBusReader::begin() {
   armReceive(0);
 }
 
-bool MclBusReader::poll(String &bits) {
+bool PLBusReader::poll(String &bits) {
   if (_nextPending < _pendingFrames.size()) {
     bits = _pendingFrames[_nextPending++];
     return true;
@@ -82,7 +82,7 @@ bool MclBusReader::poll(String &bits) {
   return true;
 }
 
-void MclBusReader::decodeSymbols(const rmt_symbol_word_t *sym, size_t n) {
+void PLBusReader::decodeSymbols(const rmt_symbol_word_t *sym, size_t n) {
   String bits;
   bool inFrame = false;
   int lastBit = 1; // Start symbol acts as an implicit "1" reference

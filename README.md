@@ -99,7 +99,7 @@ Pin numbers are placeholders for the current dev board (`upesy_wrover`) and free
 
 ## How it works
 
-1. `MclBusReader` continuously decodes bus traffic and hands complete frames to `loop()`.
+1. `PLBusReader` continuously decodes bus traffic and hands complete frames to `loop()`.
 2. `PLData` parses each frame's header and, if it matches the Beolab 3500's short notify pattern, resolves which source was requested (`device = data + 192`, cross-checked against the full Beo4 command table — see source comments for how that formula was derived).
 3. `loop()` replies with two frames, exactly as captured off a real Beocenter 2300: a Sound frame and a SelectSource frame for the requested device.
 4. One GPIO per audio source is also driven HIGH for whichever source is currently active (`SOURCE_PINS[]` in `main.cpp`) — meant for a separate relay/routing board to pick up which physical audio input should be live, with no protocol knowledge needed on that side.
@@ -123,8 +123,8 @@ pio device monitor    # serial log (115200 baud)
 ## Project structure
 
 - `src/main.cpp` — wiring: read a frame, filter for the Beolab 3500's request, reply, drive the active source pin
-- `src/MclBusReader.*` — RMT-based bus capture and pulse-to-bit decoding
-- `src/MclBusWriter.*` — bit-to-pulse encoding and transmission
+- `src/PLBusReader.*` — RMT-based bus capture and pulse-to-bit decoding
+- `src/PLBusWriter.*` — bit-to-pulse encoding and transmission
 - `src/PLData.*` — frame parsing/building (header fields, device mapping, Sound/SelectSource frame construction)
 
 ## Related

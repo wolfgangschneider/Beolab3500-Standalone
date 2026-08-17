@@ -17,9 +17,9 @@
 //   t1->0, t2->1).
 // - Frame = Start | Format(3) | Address(to)(5) | Address(from)(4) |
 //   Data | Stop (manual fig. 2045-4).
-class MclBusReader {
+class PLBusReader {
 public:
-  explicit MclBusReader(gpio_num_t pin);
+  explicit PLBusReader(gpio_num_t pin);
 
   // configures the RMT RX channel and starts listening
   void begin();

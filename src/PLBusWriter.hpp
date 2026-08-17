@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 // Transmits frames on the B&O MCL/PL "Datalink" bus by bit-banging
-// GPIO timing (see MclBusReader for the receive side). Per B&O MCL-2
+// GPIO timing (see PLBusReader for the receive side). Per B&O MCL-2
 // Service Manual ("Datalink '86"):
 // - The transmitting unit pulls the line LOW for a fixed-width strobe
 //   then releases it; the timing symbol (t1..t5) is the FULL period
@@ -14,10 +14,10 @@
 //   receiver's analog front-end needs these to lock on.
 // - Differential bit code: which timing symbol encodes a bit depends
 //   on both the bit and the previously sent bit (mirrors
-//   MclBusReader's decode).
-class MclBusWriter {
+//   PLBusReader's decode).
+class PLBusWriter {
 public:
-  explicit MclBusWriter(gpio_num_t pin);
+  explicit PLBusWriter(gpio_num_t pin);
 
   void begin();
 
