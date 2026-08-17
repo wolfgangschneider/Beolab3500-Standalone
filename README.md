@@ -1,5 +1,7 @@
 # Beolab3500-Standalone
 
+> **⚠️ Only verified against the Beolab 3500 Mk1.** Other Mk revisions may use different bus electrical characteristics or protocol details — do not assume this works unmodified on anything else.
+
 An ESP32 firmware that lets a Bang & Olufsen **Beolab 3500** satellite speaker activate a source without its real Master unit present. It listens on the B&O **MCL/PL "Datalink" bus** for the Beolab 3500's own source-select request and replies exactly the way a real Master (a Beocenter 2300, in this case) does — without that reply, the Beolab 3500 never switches on.
 
 ## Why
@@ -10,10 +12,82 @@ In a multiroom Beolink setup, a "link room" speaker like the Beolab 3500 talks t
 
 - Board: ESP32 WROVER DevKit (`upesy_wrover`)
 - **RX** — GPIO34, via a resistor divider from the bus data line (input-only pin, no pull needed)
-- **TX** — GPIO25, driving an NPN transistor (base resistor + pull-down) that pulls the bus line low, plus a clamp diode
+- **TX** — GPIO25, driving an NPN transistor (BC847) that pulls the bus line low; base resistor from GPIO25, base pull-down to GND
 - The bus itself is 2 wires only: **Data** and **GND** (no separate supply pin needed — confirmed against a working real-Master connection)
 
 The bus is wired-OR and active-low: idle is HIGH via a pull-up (supplied by whichever unit powers the bus, normally the Master), and a transmitting unit pulls the line LOW for a fixed strobe width per bit.
+
+### MCL DIN8 connector pinout
+
+The Beolink MCL cable carries more than just the bus — this project only taps 2 of its 7 pins (Data + Shield/GND, see [bus interface](#schematic-bus-interface) above). The remaining pins carry stereo audio + a DC supply, documented here for whoever wires up the audio-switch side (see [per-source select outputs](#schematic-per-source-select-outputs) above):
+
+```
+Pin 1 ─── Yellow (L hot)      ─────────────────────────► Audio jack L, tip
+
+Pin 4 ─── Green  (R hot)      ─────────────────────────► Audio jack R, tip
+
+                                                   ┌───► Audio jack L+R, sleeve
+Pin 3 ─── Grey   (L gnd)     ──┐                   │
+                               ├───────────────────┤
+Pin 5 ─── Brown  (R gnd)     ──┘                   │
+                                                   └───► ESP32 GND
+
+Pin 2 ─── Pink   (DC 7.5–8.5V) ────────────────────────► not used
+
+Pin 6 ─── White  (Data)       ─────────────────────────► see Schematic (bus interface)
+
+Pin 7 ─── Shield (GND)        ─────────────────────────► see Schematic (bus interface)
+```
+
+### Schematic (bus interface)
+
+```
+                    MCL/PL Bus — Data ────┬──────────────────────────────┬───────► Beolab 3500 (pin 6)
+                                           │                              │
+                                         [R3]                             │ (collector)
+                                         10k                            ┌─┴─┐
+                                           │                            │   │
+                                GPIO34 ────┤                            │Q1 │  BC847 (NPN)
+                                (RX)       │                  (base)    │   │
+                                         [R4]              ┌────────────┤   │
+                                         15k                │            └─┬─┘
+                                           │               [R1]            │ (emitter)
+                                          GND               2k2            │
+                                                              │           GND
+                                GPIO25 ───────────────────────┤
+                                (TX)                          │
+                                                             [R2]
+                                                             10k
+                                                              │
+                                                             GND
+
+                    MCL/PL Bus — GND  ───────────────────────────────────────────► Beolab 3500 (pin 7)
+```
+
+### Schematic (per-source select outputs)
+
+One GPIO per audio source (`SOURCE_PINS[]` in `main.cpp`), driven HIGH for whichever source is currently active and LOW for all others. A separate board reads these directly — no decoding needed on its side:
+
+```
+ESP32 (Beolab3500-Standalone)
+┌───────────────────────────┐
+│  GPIO4  (TV)      ●───────┼──► HIGH while TV is the active source
+│  GPIO5  (Radio)   ●───────┼──► HIGH while Radio is the active source
+│  GPIO12 (V.Aux)   ●───────┼──► ...
+│  GPIO13 (A.Aux)   ●───────┼──► ...
+│  GPIO14 (V.Tape)  ●───────┼──► ...
+│  GPIO15 (DVD)     ●───────┼──► ...             ──► to a separate audio-switch board
+│  GPIO16 (Sat)     ●───────┼──► ...                 (not part of this project)
+│  GPIO17 (PC)      ●───────┼──► ...
+│  GPIO18 (A.Tape)  ●───────┼──► ...
+│  GPIO19 (CD)      ●───────┼──► ...
+│  GPIO22 (Phono)   ●───────┼──► ...
+│  GPIO23 (A.Tape2) ●───────┼──► ...
+│  GPIO27 (CD2)     ●───────┼──► ...
+└───────────────────────────┘
+```
+
+Pin numbers are placeholders for the current dev board (`upesy_wrover`) and free to reassign — see [Status](#status).
 
 ## Protocol notes (MCL-2 "Datalink '86")
 

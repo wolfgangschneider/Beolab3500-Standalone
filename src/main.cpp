@@ -1,5 +1,9 @@
 /*
-  Beolink3500 - MCL/PL bus Master emulator for Beolab 3500 startup
+  Beolab3500-Standalone - MCL/PL bus Master emulator for Beolab 3500 startup
+
+  IMPORTANT: only verified against the Beolab 3500 Mk1. Other Mk
+  revisions may differ in bus electrical characteristics or protocol
+  details - do not assume this works unmodified on anything else.
 
   Board: ESP32 WROVER DevKit (upesy_wrover). RX on GPIO34 (via R3/R4
   divider, see MclBusReader), TX on GPIO25 (via transistor Q1 switch).
