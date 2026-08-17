@@ -1,0 +1,11 @@
+
+This directory is intended for project header files.
+
+A header file contains a C declaration of variables, macros, functions, etc,
+that can be shared between several project source files. You request the use
+of a header file in your project source file (C, C++, etc) located in `src`
+folder by using the C preprocessing directive `#include`.
+
+Please read this comprehensive documentation for more details:
+https://docs.platformio.org/page/projectconf/section_env_build.html#build-flags
+
