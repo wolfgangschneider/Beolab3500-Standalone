@@ -42,7 +42,7 @@ Pin 7 ─── Shield (GND)        ──────────────�
 ### Schematic (bus interface)
 
 ```
-                    MCL/PL Bus — Data ────┬──────────────────────────────┬───────► Beolab 3500 (pin 6)
+                    MCL/PL Bus — Data ────┬───────────────────────────────┬───────► Beolab 3500 (pin 6)
                                            │                              │
                                          [R3]                             │ (collector)
                                          10k                            ┌─┴─┐
@@ -50,16 +50,16 @@ Pin 7 ─── Shield (GND)        ──────────────�
                                 GPIO34 ────┤                            │Q1 │  BC847 (NPN)
                                 (RX)       │                  (base)    │   │
                                          [R4]              ┌────────────┤   │
-                                         15k                │            └─┬─┘
-                                           │               [R1]            │ (emitter)
-                                          GND               2k2            │
-                                                              │           GND
-                                GPIO25 ───────────────────────┤
-                                (TX)                          │
-                                                             [R2]
-                                                             10k
-                                                              │
-                                                             GND
+                                         15k               │            └─┬─┘
+                                           │              [R1]            │ (emitter)
+                                          GND             2k2             │
+                                                           │             GND
+                                GPIO25 ────────────────────┤
+                                (TX)                       │
+                                                          [R2]
+                                                          10k
+                                                           │
+                                                          GND
 
                     MCL/PL Bus — GND  ───────────────────────────────────────────► Beolab 3500 (pin 7)
 ```
@@ -68,8 +68,10 @@ Pin 7 ─── Shield (GND)        ──────────────�
 
 One GPIO per audio source (`SOURCE_PINS[]` in `main.cpp`), driven HIGH for whichever source is currently active and LOW for all others. A separate board reads these directly — no decoding needed on its side:
 
+
+
 ```
-ESP32 (Beolab3500-Standalone)
+ESP32 (Beolab3500-Standalone) ⚠️ this is WIP an can chang
 ┌───────────────────────────┐
 │  GPIO4  (TV)      ●───────┼──► HIGH while TV is the active source
 │  GPIO5  (Radio)   ●───────┼──► HIGH while Radio is the active source
