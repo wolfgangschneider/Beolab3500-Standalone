@@ -36,6 +36,11 @@ public:
   // not used anywhere in the protocol logic itself
   static const char* deviceName(uint8_t dev);
 
+  // reverse of deviceName(): case-insensitive name -> BODev_* device,
+  // -1 if unrecognized. Only for debug/testing (e.g. typing "radio"
+  // over Serial), not part of the normal notify-driven flow.
+  static int deviceFromName(const String &name);
+
   // builds a 48-bit SelectSource frame (Command=59, this->device,
   // Type=96, then the same trailing bytes as Radio's verified real
   // capture). A trailing 00 00 (tried first) needed a second BL3500

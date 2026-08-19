@@ -42,10 +42,10 @@ Pin 7 ─── Shield (GND)        ──────────────�
 ### Schematic (bus interface)
 
 ```
-                    MCL/PL Bus — Data ────┬───────────────────────────────┬───────► Beolab 3500 (pin 6)
+                    MCL/PL Bus — Data ─────┬──────────────────────────────┬───────► Beolab 3500 (pin 6)
                                            │                              │
-                                         [R3]                             │ (collector)
-                                         10k                            ┌─┴─┐
+                                          [R3]                            │ (collector)
+                                          10k                           ┌─┴─┐
                                            │                            │   │
                                 GPIO34 ────┤                            │Q1 │  BC847 (NPN)
                                 (RX)       │                  (base)    │   │
@@ -68,10 +68,8 @@ Pin 7 ─── Shield (GND)        ──────────────�
 
 One GPIO per audio source (`SOURCE_PINS[]` in `main.cpp`), driven HIGH for whichever source is currently active and LOW for all others. A separate board reads these directly — no decoding needed on its side:
 
-
-
 ```
-ESP32 (Beolab3500-Standalone) ⚠️ this is WIP an can chang
+ESP32  — wrover⚠️ work in progress, will change
 ┌───────────────────────────┐
 │  GPIO4  (TV)      ●───────┼──► HIGH while TV is the active source
 │  GPIO5  (Radio)   ●───────┼──► HIGH while Radio is the active source
@@ -91,6 +89,19 @@ ESP32 (Beolab3500-Standalone) ⚠️ this is WIP an can chang
 
 Pin numbers are placeholders for the current dev board (`upesy_wrover`) and free to reassign — see [Status](#status).
 
+### Schematic (navigation key outputs) could be used for Bluetooth navigation
+
+Same pattern as the per-source outputs above, but for the Left/Right/Stop keys (`KEY_PINS[]`, `setActiveKeyPin()`), intercepted *before* the source-select mapping — Left(18)/Right(20) would otherwise collide with real device numbers once `+192` is applied (18+192=210=CD, 20+192=212=A.Tape2). Idea: drive a Bluetooth controller's Next/Prev/Pause. Not wired up yet, and unlike the sources, these three key values are only derived from the same `&0x1F` formula — not individually confirmed against real Beolab 3500 hardware:
+
+```
+ESP32 - wrover⚠️ work in progress, will change
+┌───────────────────────────┐
+│  GPIO32 (Left)   ●────────┼──► HIGH while Left is pressed   (-> Bluetooth Prev?)
+│  GPIO33 (Right)  ●────────┼──► HIGH while Right is pressed  (-> Bluetooth Next?)
+│  GPIO2  (Stop)   ●────────┼──► HIGH while Stop is pressed   (-> Bluetooth Pause?)
+└───────────────────────────┘
+```
+
 ## Protocol notes (MCL-2 "Datalink '86")
 
 - Five timing symbols: t1=3.125ms, t2=6.250ms, t3=9.375ms (data bits), t4=12.500ms (Stop), t5=15.625ms (Start)
@@ -103,14 +114,24 @@ Pin numbers are placeholders for the current dev board (`upesy_wrover`) and free
 
 1. `PLBusReader` continuously decodes bus traffic and hands complete frames to `loop()`.
 2. `PLData` parses each frame's header and, if it matches the Beolab 3500's short notify pattern, resolves which source was requested (`device = data + 192`, cross-checked against the full Beo4 command table — see source comments for how that formula was derived).
-3. `loop()` replies with two frames, exactly as captured off a real Beocenter 2300: a Sound frame and a SelectSource frame for the requested device.
-4. One GPIO per audio source is also driven HIGH for whichever source is currently active (`SOURCE_PINS[]` in `main.cpp`) — meant for a separate relay/routing board to pick up which physical audio input should be live, with no protocol knowledge needed on that side.
+3. Left/Right/Stop are intercepted here and just drive a `KEY_PINS[]` output (see [navigation key outputs](#schematic-navigation-key-outputs) above) instead of a source reply.
+4. `loop()` replies with two frames, exactly as captured off a real Beocenter 2300: a Sound frame and a SelectSource frame for the requested device.
+5. One GPIO per audio source is also driven HIGH for whichever source is currently active (`SOURCE_PINS[]` in `main.cpp`) — meant for a separate relay/routing board to pick up which physical audio input should be live, with no protocol knowledge needed on that side.
+
+## Debug / testing over Serial
+
+With no Beolab 3500 on the bus, type a line into the serial monitor (115200 baud) to trigger things manually:
+
+- A source name (`radio`, `tv`, `cd`, `dvd`, `sat`, `pc`, `a.tape`, `a.tape2`, `cd2`, `v.aux`, `a.aux`, `v.tape`, `phono`) or a bare device number (e.g. `193`) — sends the full reply for that source, as if the Beolab 3500 had just requested it.
+- `<type> <subType> <value>` (e.g. `78 3 68`) — sends a one-off Sound frame with those exact field values, for figuring out what each field does (see [Status](#status) — most of it is still undocumented).
 
 ## Status
 
 - TV, Radio, and CD have been directly verified against real hardware. The other 10 sources follow the same derived formula but haven't been individually confirmed on a Beolab 3500 yet.
 - An unprompted reply at ESP32 boot (with no prior request from the Beolab 3500) does **not** activate it — the Beolab 3500 has to initiate first.
 - The Beolab 3500 occasionally sends a notify from a different sender address (11) just before its own (12) for the same button press; harmless (filtered out) but not understood.
+- `SOURCE_PINS[]` is expected to change — 13 dedicated pins for 13 sources is probably more than needed, and the source list will likely get pruned/reworked rather than staying 1:1.
+- The Sound frame's fields are mostly unexplored: `type=78` looks volume-related (real Master traffic seen with `type=78 subType=4`, value changing by a fixed step per Vol+/Vol- press — but `subType=4` isn't documented anywhere), and the known `subType=135` (VOLUME) hasn't been tried yet. Use the [debug Serial command](#debug--testing-over-serial) above to explore.
 
 ## Building
 
@@ -132,7 +153,7 @@ pio device monitor    # serial log (115200 baud)
 ## Related
 
 - [`aanban/esp32_beo4`](https://github.com/aanban/esp32_beo4) — Beo4 IR remote library (used here for the confirmed `BEO_CMD_*` command table)
-- A sister project, `BuOPowerlink`, provided an independent second bus reader used throughout development to confirm signal issues were real and not specific to the Beolab 3500
+- A sister project, `BeoPowerlinkDisplay`, provided an independent second bus reader used throughout development to confirm signal issues were real and not specific to the Beolab 3500
 
 ## License
 

@@ -36,6 +36,25 @@ const char* PLData::deviceName(uint8_t dev) {
   return "unknown";
 }
 
+int PLData::deviceFromName(const String &name) {
+  String n = name;
+  n.toLowerCase();
+  if (n == "tv")      return 192;
+  if (n == "radio")   return 193;
+  if (n == "v.aux")   return 194;
+  if (n == "a.aux")   return 195;
+  if (n == "v.tape")  return 197;
+  if (n == "dvd")     return 198;
+  if (n == "sat")     return 202;
+  if (n == "pc")      return 203;
+  if (n == "a.tape")  return 209;
+  if (n == "cd")      return 210;
+  if (n == "phono")   return 211;
+  if (n == "a.tape2") return 212;
+  if (n == "cd2")     return 215;
+  return -1;
+}
+
 // builds a 48-bit SelectSource frame. Trailing bytes are Radio's real
 // captured values, sniffed off the bus from a Beocenter 2300 (our
 // Master), reused as-is for every device - a trailing 00 00 (tried

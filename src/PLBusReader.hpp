@@ -24,11 +24,13 @@ public:
   // configures the RMT RX channel and starts listening
   void begin();
 
-  // blocks until the next complete frame is available, fills `bits`
-  // and returns true. A single RMT capture can contain more than one
-  // frame (e.g. our own two-frame TX echo) - those are queued and
-  // returned on subsequent calls without waiting for a new capture.
-  bool poll(String &bits);
+  // waits up to `timeoutTicks` for the next complete frame, fills
+  // `bits` and returns true; returns false on timeout with no frame.
+  // A single RMT capture can contain more than one frame (e.g. our
+  // own two-frame TX echo) - those are queued and returned on
+  // subsequent calls without waiting for a new capture (and without
+  // being subject to the timeout).
+  bool poll(String &bits, TickType_t timeoutTicks = portMAX_DELAY);
 
 private:
   static constexpr size_t RAW_SYMBOLS_MAX = 512;

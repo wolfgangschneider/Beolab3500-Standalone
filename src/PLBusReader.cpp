@@ -60,7 +60,7 @@ void PLBusReader::begin() {
   armReceive(0);
 }
 
-bool PLBusReader::poll(String &bits) {
+bool PLBusReader::poll(String &bits, TickType_t timeoutTicks) {
   if (_nextPending < _pendingFrames.size()) {
     bits = _pendingFrames[_nextPending++];
     return true;
@@ -69,7 +69,7 @@ bool PLBusReader::poll(String &bits) {
   _nextPending = 0;
 
   rmt_rx_done_event_data_t rxData;
-  if (xQueueReceive(_rxQueue, &rxData, portMAX_DELAY) != pdTRUE) return false;
+  if (xQueueReceive(_rxQueue, &rxData, timeoutTicks) != pdTRUE) return false;
 
   // re-arm into the other buffer immediately so we don't miss the
   // next Start pulse while this capture is being decoded
