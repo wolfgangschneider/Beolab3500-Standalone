@@ -143,14 +143,16 @@ static bool handleBl3500Key(uint32_t key) {
 static void sendMasterReply(const PLData &frame) {
   uint8_t device = (uint8_t) frame.device;
   //Serial.printf("-> replying for %s(%d)\n", PLData::deviceName(device), device);
- 
+  //delay(10); // give BL3500 a moment to finish its own TX before we start ours -
+             // explicit rather than relying on Serial.printf's own timing, which
+             // isn't there anymore now that the print above is commented out
   // Sound/SelectSource/Sound/SelectSource, alternating - matches the real
   // Master's observed order (Sound,Audio,Sound,Audio). The old "2x Sound
   // then 1x SelectSource" order never got BL3500 to actually switch.
   String test = PLData::buildSelectSourceBits(device);
  
-  writer.sendFrame(PLData::buildSoundBits(78, 3, 68));
- // writer.sendFrame(PLData::buildSoundBits(78, 3, 68));
+  writer.sendFrame(PLData::buildSoundBits(78, 6, 68)); // is the range 6 => 0-72  that means 72 = 100% (3 >= 32=100%) // last parameter unknown 
+  writer.sendFrame(PLData::buildSoundBits(78, 6, 68));
   writer.sendFrame(test);
   writer.sendFrame(test);
  // writer.sendFrame(PLData::buildSoundBits(78, 3, 68));

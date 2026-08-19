@@ -87,7 +87,14 @@ void PLBusReader::decodeSymbols(const rmt_symbol_word_t *sym, size_t n) {
   bool inFrame = false;
   int lastBit = 1; // Start symbol acts as an implicit "1" reference
 
-  for (size_t i = 0; i < n; i++) {
+  // Symbol 0 of a freshly-armed RMT capture doesn't represent a real
+  // measured pulse - its duration0 is "how long the pin already sat at
+  // its starting level before rmt_receive() armed", which is arbitrary
+  // timing, not a protocol symbol. Observed as a suspiciously consistent
+  // ~1573us (~half of t1) misclassified tcode=1 that then desyncs Start
+  // detection for the whole capture. Skip it entirely; real decoding
+  // starts at symbol 1.
+  for (size_t i = 1; i < n; i++) {
     uint8_t tcode = classifyTcode(periodUs(sym[i]));
 
     if (tcode == 5) { // Start - a new frame begins (may interrupt a running one)
@@ -97,7 +104,20 @@ void PLBusReader::decodeSymbols(const rmt_symbol_word_t *sym, size_t n) {
       lastBit = 1;
       continue;
     }
-    if (!inFrame) continue; // ignore noise before the first Start
+    if (!inFrame) {
+      if (tcode == 1 || tcode == 2 || tcode == 3) {
+        // no Start seen, but this looks like real bit timing - the real
+        // Master doesn't seem to send a fresh Start for a frame that
+        // immediately follows another one's Stop (observed: Stop, then
+        // straight into more t1/t2/t3 data, never a t5). Treat this as
+        // the implicit start of a new frame instead of dropping it.
+        inFrame = true;
+        lastBit = 1;
+        // fall through to normal bit decoding below
+      } else {
+        continue;
+      }
+    }
 
     if (tcode == 4) { // Stop - frame ends
       _pendingFrames.push_back(bits);

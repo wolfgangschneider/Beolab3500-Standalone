@@ -84,7 +84,7 @@ String PLData::buildSelectSourceBits(uint8_t device) {
                        // documented "Channel select" ValueType, matching
                        // real CD1/ATap2/RadC3/RadC4 captures) + Value=4 as
                        // a test - did NOT activate the source, reverted.
-    0x04,             // Byte4: undocumented anywhere, meaning unknown
+    0x00,             // Byte4: undocumented anywhere, meaning unknown bc2300 send 0X04
     trackCounter,           // Byte5 = Value: track/channel counter, see above
     0x00,             // Byte6: not read/used by BuOPowerlink/PowerLink.cpp at all
   };
