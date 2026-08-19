@@ -61,6 +61,20 @@ int PLData::deviceFromName(const String &name) {
 // first) needed a second BL3500 notify to take effect, Radio's real
 // value works on the first try.
 String PLData::buildSelectSourceBits(uint8_t device) {
+  // Byte5 (Value) test: increments on every call for the same device,
+  // resets to 1 whenever the device changes - trying whether BL3500 needs
+  // a genuinely changing value to notice a repeat/refresh, since it stayed
+  // displayed correctly across a repeated same-source press but not across
+  // a source change.
+  static uint8_t lastDevice = 0;
+  static uint8_t trackCounter = 1;
+  /*
+  if (device != lastDevice) {
+    trackCounter = 0;
+    lastDevice = device;
+  }*/
+  trackCounter++;
+
   uint8_t bytes[6] = {
     59,      // Byte1 = Command: 59 = Audio
     device,  // Byte2 = Device: the BODev_* source being selected
@@ -71,15 +85,17 @@ String PLData::buildSelectSourceBits(uint8_t device) {
                        // real CD1/ATap2/RadC3/RadC4 captures) + Value=4 as
                        // a test - did NOT activate the source, reverted.
     0x04,             // Byte4: undocumented anywhere, meaning unknown
-    0x02,             // Byte5 = Value: shown as a channel/station number
-                       // (DisplayBase::PrintAudio) - Radio's real capture,
-                       // reused as-is; likely device-specific, not general
+    trackCounter,           // Byte5 = Value: track/channel counter, see above
     0x00,             // Byte6: not read/used by BuOPowerlink/PowerLink.cpp at all
   };
   String bits;
   for (int i = 0; i < 6; i++) appendByte(bits, bytes[i]);
   return bits;
 }
+
+
+  
+
 
 // exact raw bitstring from the real capture (device=193=Radio),
 // verbatim, not byte-reconstructed - kept for A/B testing against

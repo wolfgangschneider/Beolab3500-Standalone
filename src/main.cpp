@@ -134,20 +134,26 @@ static bool handleBl3500Key(uint32_t key) {
   return true;
 }
 
-// reply as Master would: Sound frame (only ever captured for Radio,
-// reused as-is for every device) + SelectSource for the requested
+// reply as Master would: Sound frame + SelectSource for the requested
 // device - without this BL3500 never activates the source. Takes the
-// parsed frame directly (not just its .device) so there's one source
-// of truth read at the point of use. Only for the real notify path -
-// the debug Serial command below has no real parsed frame, so it
-// builds its reply inline instead of faking one here.
+// parsed frame directly (not just its .device) so there's one source of
+// truth read at the point of use. Only for the real notify path - the
+// debug Serial command below has no real parsed frame, so it builds its
+// reply inline instead of faking one here.
 static void sendMasterReply(const PLData &frame) {
-  int device = frame.device;
-  Serial.printf("-> replying for %s(%d)\n", PLData::deviceName((uint8_t) device), device);
-  suppressFrames = 2; // the 2 frames we're about to send will echo back on RX
-  delay(10); // give BL3500 a moment to finish its own TX before we start ours
-  writer.sendFrame(PLData::buildSoundBits(78, 3, 68)); // Type/SubType/Value from Radio's real capture
-  writer.sendFrame(PLData::buildSelectSourceBits((uint8_t) device));
+  uint8_t device = (uint8_t) frame.device;
+  //Serial.printf("-> replying for %s(%d)\n", PLData::deviceName(device), device);
+ 
+  // Sound/SelectSource/Sound/SelectSource, alternating - matches the real
+  // Master's observed order (Sound,Audio,Sound,Audio). The old "2x Sound
+  // then 1x SelectSource" order never got BL3500 to actually switch.
+  String test = PLData::buildSelectSourceBits(device);
+ 
+  writer.sendFrame(PLData::buildSoundBits(78, 3, 68));
+ // writer.sendFrame(PLData::buildSoundBits(78, 3, 68));
+  writer.sendFrame(test);
+  writer.sendFrame(test);
+ // writer.sendFrame(PLData::buildSoundBits(78, 3, 68));
   setActiveSourcePin(device);
 }
 
@@ -185,11 +191,18 @@ static void handleDebugSerial() {
     int device = PLData::deviceFromName(line);
     if (device < 0 && line.toInt() >= 192) device = line.toInt();
     if (device >= 0) {
-      Serial.printf("-> debug: full reply for %s(%d)\n", PLData::deviceName((uint8_t) device), device);
-      suppressFrames = 2; // the 2 frames we're about to send will echo back on RX
-      delay(50); // give BL3500 a moment to finish its own TX before we start ours
-      writer.sendFrame(PLData::buildSoundBits(78, 3, 68)); // Type/SubType/Value from Radio's real capture
-      writer.sendFrame(PLData::buildSelectSourceBits((uint8_t) device));
+      // build the exact 17-bit bitstring BL3500's own notify would have
+      // for this device (Format=000, AddrTo=00000, AddrFrom=BL3500_ADDR,
+      // data=(device-192)&0x1F), then parse it through PLData's real
+      // constructor - same object sendMasterReply() always gets, just
+      // synthesized instead of coming off the bus.
+      uint8_t key = (uint8_t) (device - 192) & 0x1F;
+      String bits = "000"; // Format (unused by PLData)
+      for (int b = 4; b >= 0; b--) bits += ((0 >> b) & 1) ? '1' : '0';        // AddrTo = 0
+      for (int b = 3; b >= 0; b--) bits += ((PLData::BL3500_ADDR >> b) & 1) ? '1' : '0'; // AddrFrom
+      for (int b = 4; b >= 0; b--) bits += ((key >> b) & 1) ? '1' : '0';      // data
+      PLData frame(bits);
+      sendMasterReply(frame);
       continue;
     }
 
@@ -229,19 +242,21 @@ void loop() {
   String bits;
   if (!reader.poll(bits, pdMS_TO_TICKS(50))) return;
 
-  // 2. our own TX reflects back onto RX via the shared bus wire - drop
-  //    the N frames we know are just that echo, not real bus traffic
+  // 2. our own TX reflects back onto RX via the shared bus wire - still
+  //    logged (so we can see what actually hit the bus, e.g. to compare
+  //    against what we intended to send), but not decoded/acted on
   if (suppressFrames > 0) {
     suppressFrames--;
+    Serial.printf("echo:  %u bits  %s\n", bits.length(), bits.c_str());
     return;
   }
-  Serial.printf("frame: %u bits  %s\n", bits.length(), bits.c_str());
+  //Serial.printf("frame: %u bits  %s\n", bits.length(), bits.c_str());
 
   // 3. decode Format+AddrTo+AddrFrom+Data; bail if too short to have a header
   PLData frame(bits);
   if (!frame.valid) return;
-  Serial.printf("  addrTo=%u addrFrom=%u data(%u bit)=%u\n",
-                frame.addrTo, frame.addrFrom, frame.data.length(), PLData::bitsToValue(frame.data));
+ // Serial.printf("  addrTo=%u addrFrom=%u data(%u bit)=%u\n",
+ //               frame.addrTo, frame.addrFrom, frame.data.length(), PLData::bitsToValue(frame.data));
 
   // 4. only react to short notify-shaped frames (addrTo=0, data<8 bits);
   //    ignore Master traffic and other long frames
