@@ -57,17 +57,17 @@ struct SourcePin { int device; gpio_num_t pin; };
 constexpr SourcePin SOURCE_PINS[] = {
   {192, GPIO_NUM_4},  // TV
   {193, GPIO_NUM_5},  // Radio
-  {194, GPIO_NUM_12}, // V.Aux
-  {195, GPIO_NUM_13}, // A.Aux
-  {197, GPIO_NUM_14}, // V.Tape
-  {198, GPIO_NUM_15}, // DVD
-  {202, GPIO_NUM_16}, // Sat
+ // {194, GPIO_NUM_12}, // V.Aux
+ // {195, GPIO_NUM_13}, // A.Aux
+ // {197, GPIO_NUM_14}, // V.Tape
+ // {198, GPIO_NUM_15}, // DVD
+ // {202, GPIO_NUM_16}, // Sat
   {203, GPIO_NUM_17}, // PC
-  {209, GPIO_NUM_18}, // A.Tape
+ // {209, GPIO_NUM_18}, // A.Tape
   {210, GPIO_NUM_19}, // CD
   {211, GPIO_NUM_22}, // Phono
-  {212, GPIO_NUM_23}, // A.Tape2
-  {215, GPIO_NUM_27}, // CD2
+ // {212, GPIO_NUM_23}, // A.Tape2
+ // {215, GPIO_NUM_27}, // CD2
 };
 constexpr size_t SOURCE_PIN_COUNT = sizeof(SOURCE_PINS) / sizeof(SOURCE_PINS[0]);
 
@@ -77,21 +77,22 @@ static void setActiveSourcePin(int device) {
   }
 }
 
-// One GPIO per navigation key, same exclusive-HIGH pattern as
-// SOURCE_PINS. Pin numbers are placeholders - final assignment TBD.
-struct KeyPin { uint32_t key; gpio_num_t pin; };
-constexpr KeyPin KEY_PINS[] = {
-  {18, GPIO_NUM_32}, // Left
-  {20, GPIO_NUM_33}, // Right
-  {22, GPIO_NUM_2},  // Stop
-};
-constexpr size_t KEY_PIN_COUNT = sizeof(KEY_PINS) / sizeof(KEY_PINS[0]);
+// Sender address navigation-key notify frames were observed to use,
+// distinct from BL3500_ADDR (12) used for source-select notifies. Not
+// otherwise identified (same open question as the still-unexplained
+// address 11 seen elsewhere) - only used here to separate navigation
+// keys from source keys that alias to the same Beo4 value (see
+// handleBl3500Key() call site in loop() for the specific collisions).
+constexpr uint32_t NAV_KEY_ADDR = 9;
 
-static void setActiveKeyPin(uint32_t key) {
-  for (size_t i = 0; i < KEY_PIN_COUNT; i++) {
-    digitalWrite(KEY_PINS[i].pin, KEY_PINS[i].key == key ? HIGH : LOW);
-  }
-}
+// One GPIO per navigation key, pin numbers are placeholders - final
+// assignment TBD. Only used to pinMode() them in setup(); the actual
+// pulse-on-press logic is inline in handleBl3500Key() below.
+constexpr gpio_num_t KEY_PIN_LEFT  = GPIO_NUM_12;
+constexpr gpio_num_t KEY_PIN_RIGHT = GPIO_NUM_13;
+constexpr gpio_num_t KEY_PIN_STOP  = GPIO_NUM_14;
+constexpr gpio_num_t KEY_PINS[] = {KEY_PIN_LEFT, KEY_PIN_RIGHT, KEY_PIN_STOP};
+constexpr size_t KEY_PIN_COUNT = sizeof(KEY_PINS) / sizeof(KEY_PINS[0]);
 
 // Called for every BL3500 notify with the raw Beo4 key code it
 // reported (before it's mapped to a source device via +192 - Left/
@@ -100,31 +101,53 @@ static void setActiveKeyPin(uint32_t key) {
 // handled here, so loop() skips the normal source-select reply for it.
 // Key values are (BEO_CMD_XXX & 0x1F) from the esp32_beo4 library,
 // same formula as the sources - not yet verified against real
-// hardware for these three.
+// hardware for these three. Simulates a momentary pushbutton on a
+// resistor-ladder KEY input (e.g. a Bluetooth module like the MH-M18:
+// one analog pin, each button = a different resistor to GND) - idle
+// is floating (INPUT, open switch), a press is briefly OUTPUT+LOW
+// (closed switch to GND), then back to floating. Unlike SOURCE_PINS,
+// this can't just be digitalWrite HIGH/LOW: a driven HIGH is a real
+// 3.3V on the node, not the high-Z "disconnected" an open button is,
+// and would throw off the resistor-ladder voltage division.
 static bool handleBl3500Key(uint32_t key) {
+  gpio_num_t pin;
   switch (key) {
-    case 18: // Left  (BEO_CMD_LEFT  0x32 & 0x1F)
-    case 20: // Right (BEO_CMD_RIGHT 0x34 & 0x1F)
-    case 22: // Stop  (BEO_CMD_STOP  0x36 & 0x1F)
-      setActiveKeyPin(key);
-      return true;
-    default:
-      return false;
+    case 18: pin = KEY_PIN_LEFT;  break; // Left  (BEO_CMD_LEFT  0x32 & 0x1F)
+    case 20: pin = KEY_PIN_RIGHT; break; // Right (BEO_CMD_RIGHT 0x34 & 0x1F)
+    case 22: pin = KEY_PIN_STOP;  break; // Stop  (BEO_CMD_STOP  0x36 & 0x1F)
+    default: return false;
   }
+  Serial.printf("-> key %u: GPIO%d pressed\n", key, (int) pin);
+  // every other key pin is forced back to floating (in case one was
+  // ever left stuck as an output), then the target pin briefly becomes
+  // an output driving LOW (closed switch to GND) before returning to
+  // floating (open switch) - plain digitalWrite HIGH/LOW doesn't work
+  // here: a driven HIGH is a real 3.3V on the node, not the same as
+  // "disconnected", and would throw off the resistor-ladder voltage
+  for (size_t i = 0; i < KEY_PIN_COUNT; i++) {
+    if (KEY_PINS[i] != pin) pinMode(KEY_PINS[i], INPUT);
+  }
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, LOW);
+  delay(100);
+  pinMode(pin, INPUT);
+  return true;
 }
 
 // reply as Master would: Sound frame (only ever captured for Radio,
 // reused as-is for every device) + SelectSource for the requested
-// device - without this BL3500 never activates the source. Shared by
-// the real notify-triggered path and the debug Serial command below.
-static void sendMasterReply(int device) {
+// device - without this BL3500 never activates the source. Takes the
+// parsed frame directly (not just its .device) so there's one source
+// of truth read at the point of use. Only for the real notify path -
+// the debug Serial command below has no real parsed frame, so it
+// builds its reply inline instead of faking one here.
+static void sendMasterReply(const PLData &frame) {
+  int device = frame.device;
   Serial.printf("-> replying for %s(%d)\n", PLData::deviceName((uint8_t) device), device);
   suppressFrames = 2; // the 2 frames we're about to send will echo back on RX
-  PLData d(""); // not parsed from a real frame - just a carrier for `device`
-  d.device = device;
-  //  writer.sendFrame(MASTER_RADIO_SOUND_BITS); // step-back test: known-good constant instead of buildSoundBits()
-  writer.sendFrame(d.buildSoundBits(78, 3, 68)); // Type/SubType/Value from Radio's real capture
-  writer.sendFrame(d.buildSelectSourceBits());
+  delay(10); // give BL3500 a moment to finish its own TX before we start ours
+  writer.sendFrame(PLData::buildSoundBits(78, 3, 68)); // Type/SubType/Value from Radio's real capture
+  writer.sendFrame(PLData::buildSelectSourceBits((uint8_t) device));
   setActiveSourcePin(device);
 }
 
@@ -155,16 +178,18 @@ static void handleDebugSerial() {
     if (sscanf(line.c_str(), "%d %d %d", &type, &subType, &value) == 3) {
       Serial.printf("-> debug Sound frame: type=%d subType=%d value=%d\n", type, subType, value);
       suppressFrames = 1; // this single frame will echo back on RX
-      PLData dummy(""); // buildSoundBits() doesn't use any parsed frame state
-      writer.sendFrame(dummy.buildSoundBits((uint8_t) type, (uint8_t) subType, (uint8_t) value));
+      writer.sendFrame(PLData::buildSoundBits((uint8_t) type, (uint8_t) subType, (uint8_t) value));
       continue;
     }
 
     int device = PLData::deviceFromName(line);
     if (device < 0 && line.toInt() >= 192) device = line.toInt();
     if (device >= 0) {
-      Serial.printf("-> debug: full reply for %s\n", line.c_str());
-      sendMasterReply(device);
+      Serial.printf("-> debug: full reply for %s(%d)\n", PLData::deviceName((uint8_t) device), device);
+      suppressFrames = 2; // the 2 frames we're about to send will echo back on RX
+      delay(50); // give BL3500 a moment to finish its own TX before we start ours
+      writer.sendFrame(PLData::buildSoundBits(78, 3, 68)); // Type/SubType/Value from Radio's real capture
+      writer.sendFrame(PLData::buildSelectSourceBits((uint8_t) device));
       continue;
     }
 
@@ -186,14 +211,17 @@ void setup() {
   }
 
   for (size_t i = 0; i < KEY_PIN_COUNT; i++) {
-    pinMode(KEY_PINS[i].pin, OUTPUT);
-    digitalWrite(KEY_PINS[i].pin, LOW);
+    pinMode(KEY_PINS[i], INPUT); // idle floating (open switch); see handleBl3500Key()
   }
 
   
 }
 
 void loop() {
+  // TEMP HW DEBUG: raw digitalRead of GPIO34, remove once the hardware
+  // issue is sorted out
+  //Serial.println(digitalRead(MCL_RX_PIN) ? "GPIO34 HIGH" : "GPIO34 LOW");
+
   handleDebugSerial();
 
   // 1. wait (briefly - so the Serial check above stays responsive) for
@@ -215,18 +243,28 @@ void loop() {
   Serial.printf("  addrTo=%u addrFrom=%u data(%u bit)=%u\n",
                 frame.addrTo, frame.addrFrom, frame.data.length(), PLData::bitsToValue(frame.data));
 
-  // 4. only react to BL3500's own short notify (addrFrom=12, addrTo=0,
-  //    data<8 bits); ignore Master traffic, other devices, long frames
-  if (frame.addrFrom != PLData::BL3500_ADDR || frame.addrTo != 0 || frame.data.length() >= 8) return;
+  // 4. only react to short notify-shaped frames (addrTo=0, data<8 bits);
+  //    ignore Master traffic and other long frames
+  if (frame.addrTo != 0 || frame.data.length() >= 8) return;
 
-  // 5. Left/Right/Stop switch a GPIO directly instead of a source reply
+  // 5. Left/Right/Stop switch a GPIO instead of a source reply. Gated on
+  //    addrFrom==NAV_KEY_ADDR (not just key value) because the Beo4 key
+  //    space is shared between navigation and source commands: CD's key
+  //    (0x92&0x1F=18) equals Left's (0x32&0x1F=18), and A.Tape2's
+  //    (0x94&0x1F=20) equals Right's (0x34&0x1F=20). Without the address
+  //    check, a real CD/A.Tape2 request from BL3500 (addrFrom=12) would
+  //    misfire the Left/Right pin instead of (or as well as) replying -
+  //    navigation keys were observed coming from a *different* sender
+  //    address (9) than BL3500's own source notify (12), so checking
+  //    addrFrom here is what actually disambiguates the two.
   uint32_t key = PLData::bitsToValue(frame.data);
-  if (handleBl3500Key(key)) return;
+  if (frame.addrFrom == NAV_KEY_ADDR && handleBl3500Key(key)) return;
 
-  // 6. notify data is a Beo4 key code (& 0x1F), already mapped to a
-  //    BODev_* device by the PLData constructor; ignore unknown keys
-  if (frame.device < 0) return;
+  // 6. everything else must be BL3500's own source-select notify
+  //    (addrFrom=12) with a Beo4 key code (& 0x1F) already mapped to a
+  //    BODev_* device by the PLData constructor; ignore anything else
+  if (frame.addrFrom != PLData::BL3500_ADDR || frame.device < 0) return;
 
   // 7. reply as Master would, and drive the matching source pin
-  sendMasterReply(frame.device);
+  sendMasterReply(frame);
 }

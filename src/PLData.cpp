@@ -60,10 +60,10 @@ int PLData::deviceFromName(const String &name) {
 // Master), reused as-is for every device - a trailing 00 00 (tried
 // first) needed a second BL3500 notify to take effect, Radio's real
 // value works on the first try.
-String PLData::buildSelectSourceBits() const {
+String PLData::buildSelectSourceBits(uint8_t device) {
   uint8_t bytes[6] = {
-    59,               // Byte1 = Command: 59 = Audio
-    (uint8_t) device, // Byte2 = Device: the BODev_* source being selected
+    59,      // Byte1 = Command: 59 = Audio
+    device,  // Byte2 = Device: the BODev_* source being selected
     96,               // Byte3 = ValueType: 96 = SelectSource (not in the
                        // documented 64=channel/72=volume table - our own find)
     0x04,             // Byte4: undocumented anywhere, meaning unknown
@@ -91,7 +91,7 @@ String PLData::buildRadioSourceBits() {
 // B0 0F 05, i.e. type=78 subType=3 value=68) and are copied verbatim
 // since their meaning isn't documented anywhere - only type/subType/
 // value are real parameters here.
-String PLData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value) const {
+String PLData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value) {
   const char *gap1     = "101100";
   const char *gap2     = "11000001";
   const char  trailing = '0';

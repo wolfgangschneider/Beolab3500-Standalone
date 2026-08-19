@@ -4,6 +4,30 @@
 
 An ESP32 firmware that lets a Bang & Olufsen **Beolab 3500** satellite speaker activate a source without its real Master unit present. It listens on the B&O **MCL/PL "Datalink" bus** for the Beolab 3500's own source-select request and replies exactly the way a real Master (a Beocenter 2300, in this case) does — without that reply, the Beolab 3500 never switches on.
 
+## The basic idea
+
+When you press a source key on the Beolab 3500's own remote:
+
+1. **Beolab 3500 → bus**: a 17-bit notify frame naming the source (Radio, here):
+
+   ```
+   00000000110000001
+   ```
+   Format(3)=`000`, Address(to)(5)=`00000`, Address(from)(4)=`1100` (=12, its own bus address), Data(5)=`00001` (=1, Radio's Beo4 key code)
+
+2. **This board → bus**: two frames, exactly as a real Master (Beocenter 2300) sends them:
+
+   Sound (47 bits):
+   ```
+   00110011010011101011000000001111000001010001000
+   ```
+   SelectSource (48 bits):
+   ```
+   001110111100000101100000000001000000001000000000
+   ```
+
+Without step 2, the Beolab 3500 receives its own notify but never actually activates the source. See [Protocol notes](#protocol-notes-mcl-2-datalink-86) and [How it works](#how-it-works) below for the full field-level breakdown.
+
 ## Why
 
 In a multiroom Beolink setup, a "link room" speaker like the Beolab 3500 talks to a central Master unit over a 2-wire bus. Point a remote at the Beolab 3500 directly and it sends a request onto the bus — but does nothing further until the Master answers. If the Master lives in a different room (or isn't there at all), the Beolab 3500 just sits idle. This project is a minimal stand-in for that one interaction: detect the request, send back the two frames a real Master would, nothing else.
@@ -15,7 +39,7 @@ In a multiroom Beolink setup, a "link room" speaker like the Beolab 3500 talks t
 - **TX** — GPIO25, driving an NPN transistor (BC847) that pulls the bus line low; base resistor from GPIO25, base pull-down to GND
 - The bus itself is 2 wires only: **Data** and **GND** (no separate supply pin needed — confirmed against a working real-Master connection)
 
-The bus is wired-OR and active-low: idle is HIGH via a pull-up (supplied by whichever unit powers the bus, normally the Master), and a transmitting unit pulls the line LOW for a fixed strobe width per bit.
+The bus is wired-OR and active-low: idle is HIGH via a pull-up (normally supplied by the Master, per the MCL-2 spec's 4.0–5.5V output-high range), and a transmitting unit pulls the line LOW for a fixed strobe width per bit. Since this project's whole point is running without a Master present, **this board supplies that pull-up itself** — from an external 5V supply, not the ESP32's own 3.3V GPIO — see the schematic below.
 
 ### MCL DIN8 connector pinout
 
@@ -42,6 +66,10 @@ Pin 7 ─── Shield (GND)        ──────────────�
 ### Schematic (bus interface)
 
 ```
+                                    +5V  ESP32
+                                     │   
+                                   [2K2]  pull-up since there's no Master
+                                     │
                     MCL/PL Bus — Data ─────┬──────────────────────────────┬───────► Beolab 3500 (pin 6)
                                            │                              │
                                           [R3]                            │ (collector)
@@ -69,23 +97,17 @@ Pin 7 ─── Shield (GND)        ──────────────�
 One GPIO per audio source (`SOURCE_PINS[]` in `main.cpp`), driven HIGH for whichever source is currently active and LOW for all others. A separate board reads these directly — no decoding needed on its side:
 
 ```
-ESP32  — wrover⚠️ work in progress, will change
+ESP32 — wrover  ⚠️ work in progress, will change
 ┌───────────────────────────┐
 │  GPIO4  (TV)      ●───────┼──► HIGH while TV is the active source
 │  GPIO5  (Radio)   ●───────┼──► HIGH while Radio is the active source
-│  GPIO12 (V.Aux)   ●───────┼──► ...
-│  GPIO13 (A.Aux)   ●───────┼──► ...
-│  GPIO14 (V.Tape)  ●───────┼──► ...
-│  GPIO15 (DVD)     ●───────┼──► ...             ──► to a separate audio-switch board
-│  GPIO16 (Sat)     ●───────┼──► ...                 (not part of this project)
-│  GPIO17 (PC)      ●───────┼──► ...
-│  GPIO18 (A.Tape)  ●───────┼──► ...
-│  GPIO19 (CD)      ●───────┼──► ...
+│  GPIO17 (PC)      ●───────┼──► ...             ──► to a separate audio-switch board
+│  GPIO19 (CD)      ●───────┼──► ...                 (not part of this project)
 │  GPIO22 (Phono)   ●───────┼──► ...
-│  GPIO23 (A.Tape2) ●───────┼──► ...
-│  GPIO27 (CD2)     ●───────┼──► ...
 └───────────────────────────┘
 ```
+
+Currently active in `SOURCE_PINS[]`; the rest of the 13 sources (V.Aux, A.Aux, V.Tape, DVD, Sat, A.Tape, A.Tape2, CD2) are commented out for now, not disconnected for any technical reason — just trimmed down while testing.
 
 Pin numbers are placeholders for the current dev board (`upesy_wrover`) and free to reassign — see [Status](#status).
 

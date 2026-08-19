@@ -41,12 +41,13 @@ public:
   // over Serial), not part of the normal notify-driven flow.
   static int deviceFromName(const String &name);
 
-  // builds a 48-bit SelectSource frame (Command=59, this->device,
-  // Type=96, then the same trailing bytes as Radio's verified real
-  // capture). A trailing 00 00 (tried first) needed a second BL3500
-  // notify to take effect; Radio's real 04 02 00 works on the first
-  // try, so this is used as the template for every device.
-  String buildSelectSourceBits() const;
+  // builds a 48-bit SelectSource frame (Command=59, device, Type=96,
+  // then the same trailing bytes as Radio's verified real capture). A
+  // trailing 00 00 (tried first) needed a second BL3500 notify to take
+  // effect; Radio's real 04 02 00 works on the first try, so this is
+  // used as the template for every device. Static, explicit parameter -
+  // no instance, no member state involved.
+  static String buildSelectSourceBits(uint8_t device);
 
   // Radio's exact real captured SelectSource bitstring (device=193),
   // hardcoded rather than derived from `device` - for A/B testing
@@ -59,7 +60,8 @@ public:
   // bits copied verbatim from the one real capture we have (a
   // Beocenter 2300's Radio Sound reply). Dynamic replacement for the
   // MASTER_RADIO_SOUND_BITS constant kept as a backup in main.cpp.
-  String buildSoundBits(uint8_t type, uint8_t subType, uint8_t value) const;
+  // Static, explicit parameters - no instance, no member state involved.
+  static String buildSoundBits(uint8_t type, uint8_t subType, uint8_t value);
 
   // converts a bit string ("1011...") to its unsigned value, MSB first
   static uint32_t bitsToValue(const String &s);
