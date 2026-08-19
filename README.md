@@ -66,11 +66,13 @@ Pin 7 ─── Shield (GND)        ──────────────�
 ### Schematic (bus interface)
 
 ```
-                                    +5V  ESP32
-                                     │   
-                                   [2K2]  pull-up since there's no Master
-                                     │
-                    MCL/PL Bus — Data ─────┬──────────────────────────────┬───────► Beolab 3500 (pin 6)
+
+       MCL/PL Bus — Data       ──────┬─────┬──────────────────────────────┬───────► Beolab 3500 (pin 6)
+                                     │     │                              │
+                                   [R5]    │                              │
+  pull-up since there's no Master  [2K2]   │                              │
+                                     │     │                              │
+                                   +5V     │                              │
                                            │                              │
                                           [R3]                            │ (collector)
                                           10k                           ┌─┴─┐
@@ -78,7 +80,7 @@ Pin 7 ─── Shield (GND)        ──────────────�
                                 GPIO34 ────┤                            │Q1 │  BC847 (NPN)
                                 (RX)       │                  (base)    │   │
                                          [R4]              ┌────────────┤   │
-                                         15k               │            └─┬─┘
+                                          15k              │            └─┬─┘
                                            │              [R1]            │ (emitter)
                                           GND             2k2             │
                                                            │             GND
