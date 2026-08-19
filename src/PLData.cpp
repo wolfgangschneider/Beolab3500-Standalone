@@ -65,7 +65,11 @@ String PLData::buildSelectSourceBits(uint8_t device) {
     59,      // Byte1 = Command: 59 = Audio
     device,  // Byte2 = Device: the BODev_* source being selected
     96,               // Byte3 = ValueType: 96 = SelectSource (not in the
-                       // documented 64=channel/72=volume table - our own find)
+                       // documented 64=channel/72=volume table - our own
+                       // find, but confirmed working). Tried 64 (the
+                       // documented "Channel select" ValueType, matching
+                       // real CD1/ATap2/RadC3/RadC4 captures) + Value=4 as
+                       // a test - did NOT activate the source, reverted.
     0x04,             // Byte4: undocumented anywhere, meaning unknown
     0x02,             // Byte5 = Value: shown as a channel/station number
                        // (DisplayBase::PrintAudio) - Radio's real capture,
