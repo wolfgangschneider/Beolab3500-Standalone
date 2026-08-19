@@ -1,15 +1,29 @@
 #include "PLData.hpp"
 
-// splits the bitstring into Format(3)+AddrTo(5)+AddrFrom(4)+Data, then
-// - if Data looks like a BL3500 notify (short, <8 bit) - resolves it
-// to the BODev_* device it selects (= data + 192, see PLData.hpp for
-// how this was derived), so callers don't have to.
+// The Format(3)+AddrTo(5)+AddrFrom(4) header only exists on BL3500's own
+// short notify frame (17 bits total: 12-bit header + 5-bit data). Long
+// Command frames (Sound/Audio, 47+ bits) have NO header - Command sits
+// directly at bit 0. Confirmed by decoding many real Master captures both
+// ways: skipping a header on long frames always produced garbage (random
+// addrTo/addrFrom, no recognizable Command byte), never skipping gave
+// clean, repeatedly-verified Command/Device values (e.g. 59=Audio,
+// 51=Sound, correct BODev_* device numbers). Applying the header-skip
+// unconditionally (as this used to do) left addrTo/addrFrom full of
+// meaningless noise for every long frame - never used for any decision
+// (loop()'s frame-type filter also checks data.length()), but wasted a
+// lot of debugging time before that was caught.
 PLData::PLData(const String &bits) {
+  constexpr size_t NOTIFY_MAX_BITS = 20; // 17-bit notify + a little margin
+
   if (bits.length() <= HEADER_BITS) return; // too short for a header; valid stays false
 
-  addrTo   = bitsToValue(bits.substring(FORMAT_BITS, FORMAT_BITS + ADDR_TO_BITS));
-  addrFrom = bitsToValue(bits.substring(FORMAT_BITS + ADDR_TO_BITS, HEADER_BITS));
-  data     = bits.substring(HEADER_BITS);
+  if (bits.length() <= NOTIFY_MAX_BITS) {
+    addrTo   = bitsToValue(bits.substring(FORMAT_BITS, FORMAT_BITS + ADDR_TO_BITS));
+    addrFrom = bitsToValue(bits.substring(FORMAT_BITS + ADDR_TO_BITS, HEADER_BITS));
+    data     = bits.substring(HEADER_BITS);
+  } else {
+    data = bits; // no header - Command starts at bit 0
+  }
   valid = true;
 
   if (data.length() < 8) device = (int) bitsToValue(data) + 192;

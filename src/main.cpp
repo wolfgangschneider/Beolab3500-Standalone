@@ -213,6 +213,11 @@ static void handleDebugSerial() {
 }
 
 void setup() {
+// do not send cmd to BL keay
+  for (size_t i = 0; i < KEY_PIN_COUNT; i++) {
+    pinMode(KEY_PINS[i], INPUT); // idle floating (open switch); see handleBl3500Key()
+  }
+
   Serial.begin(115200);
   delay(500);
   Serial.println("Beolink3500 - MCL/PL Master emulator");
@@ -225,9 +230,6 @@ void setup() {
     digitalWrite(SOURCE_PINS[i].pin, LOW);
   }
 
-  for (size_t i = 0; i < KEY_PIN_COUNT; i++) {
-    pinMode(KEY_PINS[i], INPUT); // idle floating (open switch); see handleBl3500Key()
-  }
 
   
 }
