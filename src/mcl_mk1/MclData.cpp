@@ -1,4 +1,4 @@
-#include "PLData.hpp"
+#include "MclData.hpp"
 
 // The Format(3)+AddrTo(5)+AddrFrom(4) header only exists on BL3500's own
 // short notify frame (17 bits total: 12-bit header + 5-bit data). Long
@@ -11,14 +11,14 @@
 // unconditionally (as this used to do) left addrTo/addrFrom full of
 // meaningless noise for every long frame - never used for any decision
 // (loop()'s frame-type filter also checks data.length()), but wasted a
-// lot of debugging time before that was caught.
-PLData::PLData(const String &bits) {
+// lot of debugging time before that was caught. addrTo isn't extracted
+// at all anymore - every real notify had the same constant value there.
+MclData::MclData(const String &bits) {
   constexpr size_t NOTIFY_MAX_BITS = 20; // 17-bit notify + a little margin
 
   if (bits.length() <= HEADER_BITS) return; // too short for a header; valid stays false
 
   if (bits.length() <= NOTIFY_MAX_BITS) {
-    addrTo   = bitsToValue(bits.substring(FORMAT_BITS, FORMAT_BITS + ADDR_TO_BITS));
     addrFrom = bitsToValue(bits.substring(FORMAT_BITS + ADDR_TO_BITS, HEADER_BITS));
     data     = bits.substring(HEADER_BITS);
   } else {
@@ -31,7 +31,7 @@ PLData::PLData(const String &bits) {
 
 // only for Serial.printf - device numbers below are the raw BODev_*
 // addresses (BuOPowerlink/PowerLink.cpp), not used for any logic
-const char* PLData::deviceName(uint8_t dev) {
+const char* MclData::deviceName(uint8_t dev) {
   switch (dev) {
     case 192: return "TV";
     case 193: return "Radio";
@@ -50,7 +50,7 @@ const char* PLData::deviceName(uint8_t dev) {
   return "unknown";
 }
 
-int PLData::deviceFromName(const String &name) {
+int MclData::deviceFromName(const String &name) {
   String n = name;
   n.toLowerCase();
   if (n == "tv")      return 192;
@@ -74,7 +74,7 @@ int PLData::deviceFromName(const String &name) {
 // Master), reused as-is for every device - a trailing 00 00 (tried
 // first) needed a second BL3500 notify to take effect, Radio's real
 // value works on the first try.
-String PLData::buildSelectSourceBits(uint8_t device) {
+String MclData::buildSelectSourceBits(uint8_t device) {
   // Byte5 (Value) test: increments on every call for the same device,
   // resets to 1 whenever the device changes - trying whether BL3500 needs
   // a genuinely changing value to notice a repeat/refresh, since it stayed
@@ -107,15 +107,11 @@ String PLData::buildSelectSourceBits(uint8_t device) {
   return bits;
 }
 
-
-  
-
-
 // exact raw bitstring from the real capture (device=193=Radio),
 // verbatim, not byte-reconstructed - kept for A/B testing against
 // buildSelectSourceBits() with device=193, which produces this exact
 // same 48 bits via the formula instead.
-String PLData::buildRadioSourceBits() {
+String MclData::buildRadioSourceBits() {
   return "001110111100000101100000000001000000001000000000";
 }
 
@@ -125,7 +121,7 @@ String PLData::buildRadioSourceBits() {
 // B0 0F 05, i.e. type=78 subType=3 value=68) and are copied verbatim
 // since their meaning isn't documented anywhere - only type/subType/
 // value are real parameters here.
-String PLData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value) {
+String MclData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value) {
   const char *gap1     = "101100";
   const char *gap2     = "11000001";
   const char  trailing = '0';
@@ -141,12 +137,12 @@ String PLData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value) {
   return bits;
 }
 
-void PLData::appendByte(String &bits, uint8_t v) {
+void MclData::appendByte(String &bits, uint8_t v) {
   for (int b = 7; b >= 0; b--) bits += ((v >> b) & 1) ? '1' : '0';
 }
 
 // MSB-first: "1011" -> 0b1011 = 11
-uint32_t PLData::bitsToValue(const String &s) {
+uint32_t MclData::bitsToValue(const String &s) {
   uint32_t v = 0;
   for (size_t i = 0; i < s.length(); i++) {
     v = (v << 1) | (s[i] == '1' ? 1 : 0);

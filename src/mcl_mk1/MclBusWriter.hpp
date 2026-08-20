@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 // Transmits frames on the B&O MCL/PL "Datalink" bus by bit-banging
-// GPIO timing (see PLBusReader for the receive side). Per B&O MCL-2
+// GPIO timing (see MclBusReader for the receive side). Per B&O MCL-2
 // Service Manual ("Datalink '86"):
 // - The transmitting unit pulls the line LOW for a fixed-width strobe
 //   then releases it; the timing symbol (t1..t5) is the FULL period
@@ -14,10 +14,13 @@
 //   receiver's analog front-end needs these to lock on.
 // - Differential bit code: which timing symbol encodes a bit depends
 //   on both the bit and the previously sent bit (mirrors
-//   PLBusReader's decode).
-class PLBusWriter {
+//   MclBusReader's decode).
+//
+// This is the Beolab 3500 Mk1 protocol only - the Mk2 uses a
+// different, pure PowerLink protocol (see ../powerlink_mk2/).
+class MclBusWriter {
 public:
-  explicit PLBusWriter(gpio_num_t pin);
+  explicit MclBusWriter(gpio_num_t pin);
 
   void begin();
 

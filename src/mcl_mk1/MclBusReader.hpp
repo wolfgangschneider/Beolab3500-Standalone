@@ -17,9 +17,12 @@
 //   t1->0, t2->1).
 // - Frame = Start | Format(3) | Address(to)(5) | Address(from)(4) |
 //   Data | Stop (manual fig. 2045-4).
-class PLBusReader {
+//
+// This is the Beolab 3500 Mk1 protocol only - the Mk2 uses a
+// different, pure PowerLink protocol (see ../powerlink_mk2/).
+class MclBusReader {
 public:
-  explicit PLBusReader(gpio_num_t pin);
+  explicit MclBusReader(gpio_num_t pin);
 
   // configures the RMT RX channel and starts listening
   void begin();
