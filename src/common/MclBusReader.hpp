@@ -18,8 +18,10 @@
 // - Frame = Start | Format(3) | Address(to)(5) | Address(from)(4) |
 //   Data | Stop (manual fig. 2045-4).
 //
-// This is the Beolab 3500 Mk1 protocol only - the Mk2 uses a
-// different, pure PowerLink protocol (see ../powerlink_mk2/).
+// Shared by both Beolab 3500 revisions - confirmed identical t1..t5
+// timing/differential bit encoding on the wire for Mk1 and Mk2 (see
+// main.cpp). Only higher-layer frame *content*
+// differs between the two (see MclData.hpp).
 class MclBusReader {
 public:
   explicit MclBusReader(gpio_num_t pin);
@@ -30,9 +32,9 @@ public:
   // waits up to `timeoutTicks` for the next complete frame, fills
   // `bits` and returns true; returns false on timeout with no frame.
   // A single RMT capture can contain more than one frame (e.g. our
-  // own two-frame TX echo) - those are queued and returned on
-  // subsequent calls without waiting for a new capture (and without
-  // being subject to the timeout).
+  // own multi-frame TX echo, see MclBusWriter::sendSource()) - those
+  // are queued and returned on subsequent calls without waiting for a
+  // new capture (and without being subject to the timeout).
   bool poll(String &bits, TickType_t timeoutTicks = portMAX_DELAY);
 
 private:

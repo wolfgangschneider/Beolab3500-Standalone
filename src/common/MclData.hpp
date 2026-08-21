@@ -1,13 +1,20 @@
 #pragma once
 
 #include <Arduino.h>
+#include "BL3500Version.hpp"
 
 // Converts between raw decoded bitstrings and the B&O MCL/PL
 // "Datalink" frame structure - parsing incoming frames and building
 // outgoing ones. No bus I/O (see MclBusReader/MclBusWriter for that).
 //
-// This is the Beolab 3500 Mk1 protocol only - the Mk2 uses a
-// different, pure PowerLink protocol (see ../powerlink_mk2/).
+// The parsing side (the constructor's notify-header handling) and
+// BL3500_ADDR/deviceName/deviceFromName are confirmed against Mk1
+// only. The building side (buildSelectSourceBits/buildSoundBits) is
+// also used from main.cpp's MK2 path as an experiment - Mk2's real
+// Master traffic decodes into the same Command/Device shapes as Mk1
+// (see main.cpp's file header), so whether frames *built* the Mk1 way
+// also activate a Mk2 unit (as opposed to only literal captured-
+// sequence replay) is being tested, not yet confirmed either way.
 //
 // Frame = Format(3) + Address(to)(5) + Address(from)(4) + Data
 // (manual fig. 2045-4) - only on BL3500's own short notify frame (data
@@ -53,13 +60,17 @@ public:
   // over Serial), not part of the normal notify-driven flow.
   static int deviceFromName(const String &name);
 
-  // builds a 48-bit SelectSource frame (Command=59, device, Type=96,
-  // then the same trailing bytes as Radio's verified real capture). A
-  // trailing 00 00 (tried first) needed a second BL3500 notify to take
-  // effect; Radio's real 04 02 00 works on the first try, so this is
-  // used as the template for every device. Static, explicit parameter -
-  // no instance, no member state involved.
-  static String buildSelectSourceBits(uint8_t device);
+  // builds a SelectSource/Audio frame (Command=59, device, valueType,
+  // seek, value) - field layout confirmed identical for both
+  // revisions (decodeAudio() in BeoPowerlinkDisplay/src/PowerLink.cpp:
+  // Byte2=Device, Byte3=ValueType, Byte4=Seek, Byte5=Value) except MK1
+  // has one extra trailing Byte6=0x00 (undocumented, copied verbatim
+  // from Radio's real capture off a Beocenter 2300; MK2's real
+  // captures never have it - 40 bit, not 48). No internal state here -
+  // callers that need a fresh `value` each call generate it themselves
+  // (there's currently no auto-incrementing counter anywhere - see
+  // git history for why that was removed).
+  static String buildSelectSourceBits(uint8_t device, uint8_t valueType, uint8_t seek, uint8_t value, BL3500Version version = BL3500Version::MK1);
 
 
   // Radio's exact real captured SelectSource bitstring (device=193),
@@ -70,13 +81,16 @@ public:
 
 
 
-  // builds a 47-bit Sound frame (Command=51, type, subType, value) -
-  // see MclData.cpp for the bit layout, which has undocumented gap
-  // bits copied verbatim from the one real capture we have (a
-  // Beocenter 2300's Radio Sound reply). Dynamic replacement for the
-  // MASTER_RADIO_SOUND_BITS constant kept as a backup in main_mk1.cpp.
-  // Static, explicit parameters - no instance, no member state involved.
-  static String buildSoundBits(uint8_t type, uint8_t subType, uint8_t value);
+  // builds a Sound frame (Command=51, type, subType, value) - 47 bit
+  // for MK1, 43 bit for MK2 (gap bits at different positions/widths -
+  // see MclData.cpp). Both gap layouts are undocumented, copied
+  // verbatim from the one real capture of each revision we have (MK1:
+  // a Beocenter 2300's Radio Sound reply; MK2: Beolink Wireless BL's
+  // idle Radio Sound, verified to reproduce that real capture
+  // bit-exactly for (76,128,40)) - only type/subType/value are real
+  // parameters either way. Dynamic MK1 replacement for the
+  // MASTER_RADIO_SOUND_BITS constant kept as a backup in main.cpp.
+  static String buildSoundBits(uint8_t type, uint8_t subType, uint8_t value, BL3500Version version = BL3500Version::MK1);
 
   // converts a bit string ("1011...") to its unsigned value, MSB first
   static uint32_t bitsToValue(const String &s);

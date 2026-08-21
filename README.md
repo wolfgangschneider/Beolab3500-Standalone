@@ -1,10 +1,19 @@
 # Beolab3500-Standalone
 
-> **⚠️ Only verified against the Beolab 3500 Mk1.** The Beolab 3500 Mk2 uses a different bus protocol entirely — pure PowerLink instead of the MCL/PL "Datalink" protocol documented below — and is not yet supported (see [Project structure](#project-structure)). Do not assume anything here works unmodified on a Mk2 or other revisions.
+An ESP32 firmware that lets a Bang & Olufsen **Beolab 3500** satellite speaker activate a source without its real Master unit present. Unlike the Menu-0-0-4 trick, this stays permanent even after a power loss — and on Mk I it also gives more possibilities, like selecting different sources.
 
-An ESP32 firmware that lets a Bang & Olufsen **Beolab 3500** satellite speaker activate a source without its real Master unit present. It listens on the B&O **MCL/PL "Datalink" bus** for the Beolab 3500's own source-select request and replies exactly the way a real Master (a Beocenter 2300, in this case) does — without that reply, the Beolab 3500 never switches on.
+## Switching to PL/MCL mode
 
-## The basic idea
+Before this project can talk to a Beolab 3500, the speaker itself has to be switched into PL/MCL bus mode via its own menu:
+
+- **Mk II**: Menu, Menu, 0, 9, Go, then Up/Down to (off), Go.
+- **Mk I**: Menu, 0, 9, Go, then Up/Down to Off, Go.  (not sure if realy needed)
+
+
+
+## Beolab 3500 MKI
+Testd on SW 1.1
+### The basic idea
 
 When you press a source key on the Beolab 3500's own remote:
 
@@ -15,7 +24,7 @@ When you press a source key on the Beolab 3500's own remote:
    ```
    Format(3)=`000`, Address(to)(5)=`00000`, Address(from)(4)=`1100` (=12, its own bus address), Data(5)=`00001` (=1, Radio's Beo4 key code)
 
-2. **This board → bus**: two frames, exactly as a real Master (Beocenter 2300) sends them:
+2. **This board → bus**: a Sound and a SelectSource frame, exactly as a real Master (Beocenter 2300) sends them:
 
    Sound (47 bits):
    ```
@@ -28,18 +37,9 @@ When you press a source key on the Beolab 3500's own remote:
 
 Without step 2, the Beolab 3500 receives its own notify but never actually activates the source. See [Protocol notes](#protocol-notes-mcl-2-datalink-86) and [How it works](#how-it-works) below for the full field-level breakdown.
 
-## Why
 
-In a multiroom Beolink setup, a "link room" speaker like the Beolab 3500 talks to a central Master unit over a 2-wire bus. Point a remote at the Beolab 3500 directly and it sends a request onto the bus — but does nothing further until the Master answers. If the Master lives in a different room (or isn't there at all), the Beolab 3500 just sits idle. This project is a minimal stand-in for that one interaction: detect the request, send back the two frames a real Master would, nothing else.
 
-## Hardware
 
-- Board: ESP32 WROVER DevKit (`upesy_wrover`)
-- **RX** — GPIO34, via a resistor divider from the bus data line (input-only pin, no pull needed)
-- **TX** — GPIO25, driving an NPN transistor (BC847) that pulls the bus line low; base resistor from GPIO25, base pull-down to GND
-- The bus itself is 2 wires only: **Data** and **GND** (no separate supply pin needed — confirmed against a working real-Master connection)
-
-The bus is wired-OR and active-low: idle is HIGH via a pull-up (normally supplied by the Master, per the MCL-2 spec's 4.0–5.5V output-high range), and a transmitting unit pulls the line LOW for a fixed strobe width per bit. Since this project's whole point is running without a Master present, **this board supplies that pull-up itself** — from an external 5V supply, not the ESP32's own 3.3V GPIO — see the schematic below.
 
 ### MCL DIN8 connector pinout
 
@@ -67,7 +67,7 @@ Pin 7 ─── Shield (GND)        ──────────────�
 
 ```
 
-       MCL/PL Bus — Data       ──────┬─────┬──────────────────────────────┬───────► Beolab 3500 (pin 6)
+       MCL/PL Bus — Data       ──────┬─────┬──────────────────────────────┬─────────────────────► Beolab 3500 (pin 6)
                                      │     │                              │
                                    [R5]    │                              │
   pull-up since there's no Master  [2K2]   │                              │
@@ -91,7 +91,14 @@ Pin 7 ─── Shield (GND)        ──────────────�
                                                            │
                                                           GND
 
-                    MCL/PL Bus — GND  ───────────────────────────────────────────► Beolab 3500 (pin 7)
+                    ESP32 — GND   ───────────────────────────────────────────► Beolab 3500 (pin 7)
+ 
+ 
+ Beolab MK2 
+                    ESP32 - 34  you don't need the  GPIO34 ─ line above
+                    ESP32 - 5v+    ───────────────────────────────────────────► Beolab 3500 MKII (pin 4)
+                    or (Optional MKII with display)
+                    ESP32 Pin ?    ───────────────────────────────────────────► Beolab 3500 MKII (pin 4)
 ```
 
 ### Schematic (per-source select outputs)
@@ -111,81 +118,101 @@ ESP32 — wrover  ⚠️ work in progress, will change
 
 Currently active in `SOURCE_PINS[]`; the rest of the 13 sources (V.Aux, A.Aux, V.Tape, DVD, Sat, A.Tape, A.Tape2, CD2) are commented out for now, not disconnected for any technical reason — just trimmed down while testing.
 
-Pin numbers are placeholders for the current dev board (`upesy_wrover`) and free to reassign — see [Status](#status).
+Pin numbers are placeholders for the current dev board (`upesy_wrover`) and free to reassign .
 
 ### Schematic (navigation key outputs) could be used for Bluetooth navigation
 
-Same pattern as the per-source outputs above, but for the Left/Right/Stop keys (`KEY_PINS[]` in `src/common/GpioOutputs.cpp`, dispatched from `handleBl3500Key()` in `src/main_mk1.cpp`), intercepted *before* the source-select mapping — Left(18)/Right(20) would otherwise collide with real device numbers once `+192` is applied (18+192=210=CD, 20+192=212=A.Tape2). Idea: drive a Bluetooth controller's Next/Prev/Pause. Not wired up yet, and unlike the sources, these three key values are only derived from the same `&0x1F` formula — not individually confirmed against real Beolab 3500 hardware:
+Same pattern as the per-source outputs above, but for the Left/Right/Stop keys (`KEY_PINS[]` in `src/common/GpioOutputs.cpp`, dispatched from `handleBl3500Key()` in `src/main.cpp`), intercepted *before* the source-select mapping — Left(18)/Right(20) would otherwise collide with real device numbers once `+192` is applied (18+192=210=CD, 20+192=212=A.Tape2). Idea: drive a Bluetooth controller's Next/Prev/Pause. Not wired up yet, and unlike the sources, these three key values are only derived from the same `&0x1F` formula — not individually confirmed against real Beolab 3500 hardware:
 
 ```
 ESP32 - wrover⚠️ work in progress, will change
 ┌───────────────────────────┐
-│  GPIO32 (Left)   ●────────┼──► HIGH while Left is pressed   (-> Bluetooth Prev?)
-│  GPIO33 (Right)  ●────────┼──► HIGH while Right is pressed  (-> Bluetooth Next?)
-│  GPIO2  (Stop)   ●────────┼──► HIGH while Stop is pressed   (-> Bluetooth Pause?)
+│  GPIO12 (Left)   ●────────┼──► HIGH while Left is pressed   (-> Bluetooth Prev?)
+│  GPIO13 (Right)  ●────────┼──► HIGH while Right is pressed  (-> Bluetooth Next?)
+│  GPIO14 (Stop)   ●────────┼──► HIGH while Stop is pressed   (-> Bluetooth Pause?)
 └───────────────────────────┘
 ```
 
-## Protocol notes (MCL-2 "Datalink '86")
+### Protocol notes (MCL-2 "Datalink '86")
 
-- Five timing symbols: t1=3.125ms, t2=6.250ms, t3=9.375ms (data bits), t4=12.500ms (Stop), t5=15.625ms (Start)
-- A frame's Start is preceded by **two AGC-priming t1 pulses** (`t1, t1, t5`) — a real receiver's analog front-end needs these to lock onto the signal, even though a pure digital receiver decodes fine without them. Missing this was the first of two bugs that kept the Beolab 3500 from activating during development.
-- Bits are differentially encoded: which timing symbol represents a `0` or `1` depends on the previous bit.
-- Frame = `Start | Format(3 bit) | Address(to)(5 bit) | Address(from)(4 bit) | Data | Stop`.
-- The Beolab 3500's own request is a short frame: `addrFrom=12` (its bus address), `addrTo=0`, and `data` is a Beo4 remote key code masked to 5 bits (`BEO_CMD_XXX & 0x1F`).
+[Bang_and_Olufsen_MCL-2_service_manual.pdf](Bang_and_Olufsen_MCL-2_service_manual.pdf)
+
+
+
+## Beolab 3500 Mk II
+
+Tested with SW 3.33
+
+
+When the Beolab 3500 Mk II is in PL mode, it behaves like a normal BL speaker (BL6000, BL8000): no IR reception, no SelectSource, and **also no Vol+/Vol-**. A speaker like that having its own display doesn't really make sense in the first place.
+
+> ⚠️ **Big warning**: PL-level audio signals are much lower than a typical Line In / audio jack level. Since the Beolab 3500 Mk II's volume can't be controlled over PL (see above), feeding it a normal Line-In-level signal directly risks destroying it. Attenuate the input first — a voltage divider, or a level control on the source device — before connecting it.
+
+## The basic idea
+
+
+### Without display
+
+Simple, two things needed — tie **PL4** to **+5V**, and send `0011000111100111111100000000100` on **PL6 / PL7**.
+
+### With display
+
+It gets more complicated — two additional requirements:
+1. After the frame's normal Stop (t4), one more t1 pulse (3.125ms).
+2. Mute (`MK2_MUTE_PIN`, GPIO26 in `main.cpp`) must only go HIGH *after* that init sequence (`0011000111100111111100000000100`) has finished sending — it has to stay LOW for the whole duration of the sequence.
+
+### Schematic (bus interface)
+see MK I
+
+### PL DIN8 connector pinout
+The Beolink MCL cable carries more than just the bus — this project only taps 2 of its 7 pins (Data + Shield/GND, see bus interface above). The remaining pins carry stereo audio + a DC supply, documented here for whoever wires up the audio-switch side (see per-source select outputs above):
+
+Pin 1 ─── Greay  (power)   ─────────────────────────► not used
+
+Pin 2 ─── Blue  (GND)     ─────────────────────────► Audio jack GND, tip
+
+Pin 3 ─── Braun   (Left)  ─────────────────────────► Audio jack Left, tip
+                               
+Pin 4 ─── Yellow  (Mute)  ─────────────────────────► See Schematic (bus interface)                │
+
+Pin 5 ─── Green   (right) ─────────────────────────► Audio jack Left, tip
+
+Pin 6 ─── White  (Data)   ─────────────────────────► see Schematic (bus interface)
+
+Pin 7 ─── Shield (GND)    ─────────────────────────► see Schematic (bus interface)
+
+
+
+
+## Project structure
+
+Both Beolab 3500 revisions share one bus implementation (confirmed identical wire protocol) and one entry point:
+
+- `src/main.cpp` — reads `blVersion` to pick MK1 or MK2 behavior:
+  - **MK1**: fully automatic — read an MCL/PL notify frame, filter for the Beolab 3500's request, reply, drive the active source pin.
+  - **MK2**: no automatic flow (BL3500 Mk2 doesn't send anything of its own onto the bus — it's a passive speaker, all traffic originates from the real Master) — `setup()` sends a built power-on sequence once at boot (`writer.sendInit()`), and `handleDebugSerial()`'s commands are otherwise the only way to send anything: `init` and `vol <value>` (MK2 only), plus the shared `sound <subType> <value>` and `<source name> [track]` commands also used by MK1.
+- `src/common/`:
+  - `BL3500Version.hpp` — the `MK1`/`MK2` enum used throughout instead of an unnamed bool flag
+  - `MclBusReader.*` — RMT-based bus capture and pulse-to-bit decoding, shared by both revisions
+  - `MclBusWriter.*` — bit-to-pulse encoding and transmission, plus the higher-level protocol sends (`sendSource`/`sendSound`/`sendVol`/`sendInit`) built on top of it; shared by both revisions, branches internally on its own `BL3500Version` (e.g. MK2's trailing pulse) — see [Beolab 3500 Mk II](#beolab-3500-mk-ii)
+  - `MclData.*` — frame parsing/building (header fields, device mapping, Sound/SelectSource frame construction) — parsing is confirmed against MK1 only; the builders take a `BL3500Version` too and are also used experimentally from MK2
+  - `GpioOutputs.*` — the downstream per-source and navigation-key GPIO outputs, shared since they're hardware-side, not protocol-specific (MK1 only for now)
 
 ## How it works
 
 1. `MclBusReader` continuously decodes bus traffic and hands complete frames to `loop()`.
 2. `MclData` parses each frame's header and, if it matches the Beolab 3500's short notify pattern, resolves which source was requested (`device = data + 192`, cross-checked against the full Beo4 command table — see source comments for how that formula was derived).
 3. Left/Right/Stop are intercepted here and just drive a `KEY_PINS[]` output (see [navigation key outputs](#schematic-navigation-key-outputs) above) instead of a source reply.
-4. `loop()` replies with two frames, exactly as captured off a real Beocenter 2300: a Sound frame and a SelectSource frame for the requested device.
-5. One GPIO per audio source is also driven HIGH for whichever source is currently active (`SOURCE_PINS[]` in `src/common/GpioOutputs.cpp`) — meant for a separate relay/routing board to pick up which physical audio input should be live, with no protocol knowledge needed on that side.
+4. `loop()` calls `writer.sendSource(device, track)` (see `common/MclBusWriter.cpp`), which replies with four frames, exactly as captured off a real Beocenter 2300: Sound, Sound, SelectSource, SelectSource for the requested device.
+5. One GPIO per audio source is also driven HIGH for whichever source is currently active (`GpioOutputs::setActiveSourcePin()`, called from `main.cpp` right after `writer.sendSource()`) — meant for a separate relay/routing board to pick up which physical audio input should be live, with no protocol knowledge needed on that side.
 
-## Debug / testing over Serial
-
-With no Beolab 3500 on the bus, type a line into the serial monitor (115200 baud) to trigger things manually:
-
-- A source name (`radio`, `tv`, `cd`, `dvd`, `sat`, `pc`, `a.tape`, `a.tape2`, `cd2`, `v.aux`, `a.aux`, `v.tape`, `phono`) or a bare device number (e.g. `193`) — sends the full reply for that source, as if the Beolab 3500 had just requested it.
-- `<type> <subType> <value>` (e.g. `78 3 68`) — sends a one-off Sound frame with those exact field values, for figuring out what each field does (see [Status](#status) — most of it is still undocumented).
-
-## Status
-
-- TV, Radio, and CD have been directly verified against real hardware. The other 10 sources follow the same derived formula but haven't been individually confirmed on a Beolab 3500 yet.
-- An unprompted reply at ESP32 boot (with no prior request from the Beolab 3500) does **not** activate it — the Beolab 3500 has to initiate first.
-- The Beolab 3500 occasionally sends a notify from a different sender address (11) just before its own (12) for the same button press; harmless (filtered out) but not understood.
-- `SOURCE_PINS[]` is expected to change — 13 dedicated pins for 13 sources is probably more than needed, and the source list will likely get pruned/reworked rather than staying 1:1.
-- The Sound frame's fields are mostly unexplored: `type=78` looks volume-related (real Master traffic seen with `type=78 subType=4`, value changing by a fixed step per Vol+/Vol- press — but `subType=4` isn't documented anywhere), and the known `subType=135` (VOLUME) hasn't been tried yet. Use the [debug Serial command](#debug--testing-over-serial) above to explore.
-
-## Building
-
-Requires [PlatformIO](https://platformio.org/).
-
-```bash
-pio run -e upesy_wrover        # build MK1 (MCL/PL Datalink) — default env, matches BL3500 Mk1
-pio run -e upesy_wrover -t upload
-pio run -e upesy_wrover_mk2    # build MK2 (PowerLink) — not implemented yet, prints a placeholder
-pio device monitor              # serial log (115200 baud)
-```
-
-## Project structure
-
-This repo covers both Beolab 3500 revisions, kept in strictly separate source trees with their own PlatformIO build environment — nothing is shared between the two protocol implementations beyond `src/common/`:
-
-- `src/main_mk1.cpp` — **MK1** wiring: read an MCL/PL frame, filter for the Beolab 3500's request, reply, drive the active source pin. Built by the `upesy_wrover` env.
-- `src/mcl_mk1/` — MK1's MCL/PL "Datalink" protocol implementation:
-  - `MclBusReader.*` — RMT-based bus capture and pulse-to-bit decoding
-  - `MclBusWriter.*` — bit-to-pulse encoding and transmission
-  - `MclData.*` — frame parsing/building (header fields, device mapping, Sound/SelectSource frame construction)
-- `src/main_mk2.cpp` — **MK2** entry point, currently just a placeholder. Built by the `upesy_wrover_mk2` env.
-- `src/powerlink_mk2/` — MK2's PowerLink protocol implementation, not yet written (Mk2 protocol not yet reverse engineered) — see `src/powerlink_mk2/README.md`.
-- `src/common/` — `GpioOutputs.*`: the downstream per-source and navigation-key GPIO outputs, shared by both MK1 and MK2 since they're hardware-side, not protocol-specific.
-
-## Related
-
-- [`aanban/esp32_beo4`](https://github.com/aanban/esp32_beo4) — Beo4 IR remote library (used here for the confirmed `BEO_CMD_*` command table)
-- A sister project, `BeoPowerlinkDisplay`, provided an independent second bus reader used throughout development to confirm signal issues were real and not specific to the Beolab 3500
 
 ## License
 
-Not yet decided.
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) — free to use, modify, and share (with attribution, same license for derivatives), non-commercial only. See [`LICENSE`](LICENSE).
+
+
+  ## Related
+
+- [`aanban/esp32_beo4`](https://github.com/aanban/esp32_beo4) — Beo4 IR remote library (used here for the confirmed `BEO_CMD_*` command table)
+- A sister project, `BeoPowerlinkDisplay`, provided an independent second bus reader used throughout development to confirm signal issues were real and not specific to the Beolab 3500

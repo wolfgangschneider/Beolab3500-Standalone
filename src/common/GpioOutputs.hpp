@@ -2,8 +2,8 @@
 
 #include <Arduino.h>
 
-// GPIO outputs shared by every bus-protocol variant (MK1 MCL, MK2
-// PowerLink, ...) - drives a separate, not-yet-built downstream board
+// GPIO outputs shared by both Beolab 3500 revisions (confirmed identical
+// wire protocol, see common/MclBusReader.hpp) - drives a separate, not-yet-built downstream board
 // (source-switch matrix + resistor-ladder button emulator). No bus
 // protocol knowledge here; callers translate their own protocol's
 // device/key values before calling in.

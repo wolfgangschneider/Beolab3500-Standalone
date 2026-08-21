@@ -69,41 +69,19 @@ int MclData::deviceFromName(const String &name) {
   return -1;
 }
 
-// builds a 48-bit SelectSource frame. Trailing bytes are Radio's real
-// captured values, sniffed off the bus from a Beocenter 2300 (our
-// Master), reused as-is for every device - a trailing 00 00 (tried
-// first) needed a second BL3500 notify to take effect, Radio's real
-// value works on the first try.
-String MclData::buildSelectSourceBits(uint8_t device) {
-  // Byte5 (Value) test: increments on every call for the same device,
-  // resets to 1 whenever the device changes - trying whether BL3500 needs
-  // a genuinely changing value to notice a repeat/refresh, since it stayed
-  // displayed correctly across a repeated same-source press but not across
-  // a source change.
-  static uint8_t lastDevice = 0;
-  static uint8_t trackCounter = 1;
-  /*
-  if (device != lastDevice) {
-    trackCounter = 0;
-    lastDevice = device;
-  }*/
-  trackCounter++;
-
-  uint8_t bytes[6] = {
-    59,      // Byte1 = Command: 59 = Audio
-    device,  // Byte2 = Device: the BODev_* source being selected
-    96,               // Byte3 = ValueType: 96 = SelectSource (not in the
-                       // documented 64=channel/72=volume table - our own
-                       // find, but confirmed working). Tried 64 (the
-                       // documented "Channel select" ValueType, matching
-                       // real CD1/ATap2/RadC3/RadC4 captures) + Value=4 as
-                       // a test - did NOT activate the source, reverted.
-    0x00,             // Byte4: undocumented anywhere, meaning unknown bc2300 send 0X04
-    trackCounter,           // Byte5 = Value: track/channel counter, see above
-    0x00,             // Byte6: not read/used by BuOPowerlink/PowerLink.cpp at all
-  };
+// Command(8) + Device(8) + ValueType(8) + Seek(8) + Value(8), byte-
+// aligned, straight from decodeAudio()'s confirmed field layout - same
+// for both revisions, except MK1 has one extra trailing Byte6=0x00
+// (undocumented, copied verbatim from Radio's real capture off a
+// Beocenter 2300; MK2's real captures never have it - 40 bit, not 48).
+String MclData::buildSelectSourceBits(uint8_t device, uint8_t valueType, uint8_t seek, uint8_t value, BL3500Version version) {
   String bits;
-  for (int i = 0; i < 6; i++) appendByte(bits, bytes[i]);
+  appendByte(bits, 59); // Command = Audio/SelectSource
+  appendByte(bits, device);
+  appendByte(bits, valueType);
+  appendByte(bits, seek);
+  appendByte(bits, value);
+  if (version == BL3500Version::MK1) appendByte(bits, 0x00); // Byte6, MK1 only
   return bits;
 }
 
@@ -115,25 +93,34 @@ String MclData::buildRadioSourceBits() {
   return "001110111100000101100000000001000000001000000000";
 }
 
-// 47 bits = Command(8) + Type(8) + gap1(6) + SubType(8) + gap2(8) +
-// Value(8) + trailing(1). gap1/gap2/trailing come from the one real
-// capture we have (Beocenter 2300, Radio's Sound reply: bytes 33 4E
-// B0 0F 05, i.e. type=78 subType=3 value=68) and are copied verbatim
-// since their meaning isn't documented anywhere - only type/subType/
-// value are real parameters here.
-String MclData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value) {
-  const char *gap1     = "101100";
-  const char *gap2     = "11000001";
-  const char  trailing = '0';
-
+// MK1: 47 bits = Command(8) + Type(8) + gap1(6) + SubType(8) + gap2(8)
+// + Value(8) + trailing(1). gap1/gap2/trailing come from the one real
+// MK1 capture we have (Beocenter 2300, Radio's Sound reply: bytes 33
+// 4E B0 0F 05, i.e. type=78 subType=3 value=68).
+// MK2: 43 bits = Command(8) + Type(8) + gap1(3) + SubType(8) + gap2(8)
+// + Value(8), no trailing bit. gap1/gap2 come from the one real MK2
+// capture we have (Beolink Wireless BL, idle Radio Sound: type=76
+// subType=128 value=40), verified to reproduce that capture's bits
+// exactly.
+// Both gap layouts are undocumented, copied verbatim - only
+// type/subType/value are real parameters either way.
+String MclData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value, BL3500Version version) {
   String bits;
   appendByte(bits, 51); // Command = Sound
   appendByte(bits, type);
-  bits += gap1;
-  appendByte(bits, subType);
-  bits += gap2;
-  appendByte(bits, value);
-  bits += trailing;
+
+  if (version == BL3500Version::MK2) {
+    bits += "101"; // gap1
+    appendByte(bits, subType);
+    bits += "10001100"; // gap2
+    appendByte(bits, value);
+  } else {
+    bits += "101100"; // gap1
+    appendByte(bits, subType);
+    bits += "11000001"; // gap2
+    appendByte(bits, value);
+    bits += '0'; // trailing
+  }
   return bits;
 }
 
