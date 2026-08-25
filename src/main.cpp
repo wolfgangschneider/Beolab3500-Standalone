@@ -46,10 +46,23 @@
 #include "common/GpioOutputs.hpp"
 
 // set this to match the board you're about to flash - see file header
-static BL3500Version blVersion = BL3500Version::MK2;
+static BL3500Version blVersion = BL3500Version::MK1;
+#ifdef BOARD_M5STAMP_S3
+constexpr gpio_num_t MCL_TX_PIN = GPIO_NUM_3;
+constexpr gpio_num_t MK2_MUTE_PIN = GPIO_NUM_5;
+constexpr gpio_num_t MK2_BL_MUTE_PIN = GPIO_NUM_9;
+constexpr gpio_num_t MK2_DETECTED = GPIO_NUM_43;
 
+constexpr gpio_num_t MCL_RX_PIN = GPIO_NUM_1;
+String board= "stamp";
+#else
+constexpr gpio_num_t MK2_MUTE_PIN = GPIO_NUM_26;
+constexpr gpio_num_t MK2_BL_MUTE_PIN = GPIO_NUM_33;
+constexpr gpio_num_t MK2_DETECTED = GPIO_NUM_32;
 constexpr gpio_num_t MCL_RX_PIN = GPIO_NUM_34;
 constexpr gpio_num_t MCL_TX_PIN = GPIO_NUM_25;
+String board= "wroover";
+#endif
 
 // MK2 only: BL3500 Mk2's display doesn't update correctly unless this
 // is driven around writer.sendInit() - own dedicated pin, deliberately
@@ -60,7 +73,6 @@ constexpr gpio_num_t MCL_TX_PIN = GPIO_NUM_25;
 // ("GPIO can only be used as input mode"). GPIO26 has an output
 // driver and isn't a boot-strapping pin (unlike 0/2/12/15) - change if
 // it's not physically reachable on the board either.
-constexpr gpio_num_t MK2_MUTE_PIN = GPIO_NUM_26;
 
 // BACKUP of Master's Sound response as a raw bitstring, kept in case
 // MclData::buildSoundBits() ever needs to be double-checked against
@@ -70,7 +82,7 @@ constexpr gpio_num_t MK2_MUTE_PIN = GPIO_NUM_26;
 // (bit-shifted field, see BuOPowerlink/PowerLink.cpp), Value=68.
 constexpr const char *MASTER_RADIO_SOUND_BITS = "00110011010011101011000000001111000001010001000";
 
-static MclBusWriter writer(MCL_TX_PIN, blVersion);
+static MclBusWriter writer(MCL_TX_PIN);
 static MclBusReader reader(MCL_RX_PIN);
 
 // Sender address navigation-key notify frames were observed to use,
@@ -207,19 +219,26 @@ static void handleDebugSerial() {
 void setup() {
   Serial.begin(115200);
   delay(500);
+    pinMode(MK2_DETECTED, INPUT_PULLDOWN);
+
+  if (digitalRead(MK2_DETECTED) == HIGH) {
+    Serial.println("MK2 detected via GPIO44");
+    blVersion = BL3500Version::MK2;
+  } 
 
   if (blVersion == BL3500Version::MK1) {
     GpioOutputs::beginKeyPins();
-    Serial.println("Beolab3500-Standalone MK1 - MCL/PL Master emulator");
-    writer.begin();
+    Serial.printf("Beolab3500-Standalone MK1 - MCL/PL Master emulator %s\n", board.c_str());
+    writer.begin(blVersion);
     reader.begin();
-    GpioOutputs::beginSourcePins();
+     GpioOutputs::beginSourcePins(); 
+    
     return;
   }
 
   // MK2
-  Serial.println("Beolab3500-Standalone MK2 - Master emulator");
-  writer.begin();
+  Serial.printf("Beolab3500-Standalone MK2 - Master emulator %s\n", board.c_str());
+  writer.begin(blVersion);
   // reader.begin() intentionally not called: BL3500 Mk2 doesn't send
   // anything of its own to react to (see file header) - loop() has no
   // reactive decode path for MK2 (see loop() below), so nothing would
@@ -231,17 +250,34 @@ void setup() {
   // the init sequence has completed). See MK2_MUTE_PIN above.
   pinMode(MK2_MUTE_PIN, OUTPUT);
 
+  pinMode(MK2_BL_MUTE_PIN, INPUT_PULLDOWN);
+
   // NOTE: unlike the "init" debug command below, mute is NOT pulled
   // LOW before this boot-time sendInit() call - only set HIGH after.
   // Not yet confirmed whether that's deliberate or a leftover gap.
   writer.sendInit();
+  writer.sendSource(193, 0); // Radio, track 0 - matches the real Master's observed first source after power-on
   digitalWrite(MK2_MUTE_PIN, HIGH); // ensure mute is off initially
 }
 
 void loop() {
+ 
+ 
+   //Serial.printf("loop() tick\n");
   handleDebugSerial();
 
-  if (blVersion == BL3500Version::MK2) return; // no automatic flow yet - handleDebugSerial()'s commands are the only TX trigger
+  if (blVersion == BL3500Version::MK2) {
+    // mute from BL device - WIP. Gated to MK2-only on purpose: MK2_MUTE_PIN/
+    // MK2_BL_MUTE_PIN are shared physical GPIOs with the MK1-only
+    // KEY_PIN_LEFT/STOP (see GpioOutputs.hpp) - safe to reuse only because
+    // this runs exclusively when blVersion==MK2, and beginKeyPins()/
+    // pressKey() run exclusively when blVersion==MK1, so the two never
+    // touch the same pin in the same running mode.
+    bool mk2Mute = digitalRead(MK2_BL_MUTE_PIN) == HIGH;
+    digitalWrite(MK2_MUTE_PIN, !mk2Mute); // mirror the external (BL) mute signal to the MK2's own mute pin
+   // Serial.printf("loop() tick: MK2_BL_MUTE_PIN=%d -> MK2_MUTE_PIN=%d\n", mk2Mute, !mk2Mute);
+    return; // no automatic flow yet - handleDebugSerial()'s commands are the only TX trigger
+  }
 
   // 1. wait (briefly - so the Serial check above stays responsive) for
   //    the next complete frame; see MclBusReader::poll
@@ -260,8 +296,8 @@ void loop() {
   // 3. decode Format+AddrFrom+Data; bail if too short to have a header
   MclData frame(bits);
   if (!frame.valid) return;
- // Serial.printf("  addrFrom=%u data(%u bit)=%u\n",
- //               frame.addrFrom, frame.data.length(), MclData::bitsToValue(frame.data));
+  //Serial.printf("  addrFrom=%u data(%u bit)=%u\n",
+  //              frame.addrFrom, frame.data.length(), MclData::bitsToValue(frame.data));
 
   // 4. only react to short notify-shaped frames (data<8 bits); ignore
   //    Master traffic and other long frames. addrTo isn't checked - every

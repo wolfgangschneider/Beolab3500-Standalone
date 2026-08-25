@@ -44,7 +44,18 @@ void MclBusReader::begin() {
   rxChanCfg.gpio_num          = _pin;
   rxChanCfg.clk_src           = RMT_CLK_SRC_DEFAULT;
   rxChanCfg.resolution_hz     = 1000000u; // 1MHz -> 1us resolution
-  rxChanCfg.mem_block_symbols = RAW_SYMBOLS_MAX;
+  // On-chip RMT channel memory block, NOT the software receive buffer
+  // (that's _rawSymbols/RAW_SYMBOLS_MAX below, plain RAM, unrelated).
+  // Must be small enough to fit in one HW channel's block - 512 (a
+  // leftover copy-paste of RAW_SYMBOLS_MAX) happened to fit on the
+  // original ESP32's larger/shared RMT memory, but exceeds what a
+  // single RX channel can ever get on the ESP32-S3 (only 4 RX channels
+  // total, much less combined memory), so rmt_new_rx_channel() failed
+  // there with "no free rx channels" on every boot. 64 is the safe
+  // default block size supported across ESP32 variants; rmt_receive()
+  // still captures a full frame into the much larger _rawSymbols[]
+  // regardless of this value.
+  rxChanCfg.mem_block_symbols = 64;
   rxChanCfg.flags.invert_in   = false;
   rxChanCfg.flags.with_dma    = false;
   ESP_ERROR_CHECK(rmt_new_rx_channel(&rxChanCfg, &_rxChan));

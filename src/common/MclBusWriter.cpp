@@ -1,8 +1,9 @@
 #include "MclBusWriter.hpp"
 
-MclBusWriter::MclBusWriter(gpio_num_t pin, BL3500Version version) : _pin(pin), _version(version) {}
+MclBusWriter::MclBusWriter(gpio_num_t pin) : _pin(pin) {}
 
-void MclBusWriter::begin() {
+void MclBusWriter::begin(BL3500Version version) {
+  _version = version;
   pinMode(_pin, OUTPUT);
   digitalWrite(_pin, LOW); // idle: transistor off, bus released
 }
@@ -49,8 +50,8 @@ void MclBusWriter::sendSource(uint8_t device, uint8_t track) {
   // old "2x Sound then 1x SelectSource" order never got BL3500 to
   // actually switch.
   String select = MclData::buildSelectSourceBits(device, 96, 0x00, track, BL3500Version::MK1);
-  sendSound(3, 68); // 3=SubType, 68=Value - matches the real Master's observed values for Radio (see git history)
-  sendSound(3, 68); // repeat to match the real Master's observed order (Sound,Audio,Sound,Audio)
+  sendSound(6, 68); // 3=SubType, 68=Value - matches the real Master's observed values for Radio (see git history)
+  sendSound(6, 68); // repeat to match the real Master's observed order (Sound,Audio,Sound,Audio)
   sendFrame(select);
   sendFrame(select);
 }

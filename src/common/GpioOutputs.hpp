@@ -23,11 +23,22 @@ extern const size_t SOURCE_PIN_COUNT;
 void beginSourcePins();
 void setActiveSourcePin(int device);
 
-// One GPIO per navigation key (Left/Right/Stop), pin numbers are
-// placeholders - final assignment TBD.
-constexpr gpio_num_t KEY_PIN_LEFT  = GPIO_NUM_12;
-constexpr gpio_num_t KEY_PIN_RIGHT = GPIO_NUM_13;
-constexpr gpio_num_t KEY_PIN_STOP  = GPIO_NUM_14;
+// One GPIO per navigation key (Left/Right/Stop). Same values for both
+// esp32_wrover and m5_stamp_S3 (no per-board #ifdef needed, both boards
+// have these free). LEFT/STOP intentionally reuse main.cpp's
+// MK2_MUTE_PIN(5)/MK2_BL_MUTE_PIN(9) - safe because loop()'s mute-mirror
+// code is gated to blVersion==MK2 only, while beginKeyPins()/pressKey()
+// only ever run when blVersion==MK1, so the two purposes never touch
+// the pin in the same running mode.
+// RIGHT(7) currently reuses SOURCE_PINS' commented-out PC entry - that
+// one is NOT mode-exclusive (both KEY_PINS and SOURCE_PINS are MK1-only
+// and active *simultaneously* within that mode), it's only safe while
+// PC stays disabled. Uncommenting PC on GPIO7 in GpioOutputs.cpp would
+// collide with this - give RIGHT a different free pin first if that
+// ever happens.
+constexpr gpio_num_t KEY_PIN_LEFT  = GPIO_NUM_5;
+constexpr gpio_num_t KEY_PIN_RIGHT = GPIO_NUM_7;
+constexpr gpio_num_t KEY_PIN_STOP  = GPIO_NUM_9;
 extern const gpio_num_t KEY_PINS[];
 extern const size_t KEY_PIN_COUNT;
 

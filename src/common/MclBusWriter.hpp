@@ -26,9 +26,9 @@
 // from our own TX - Mk1 traffic never has it.
 class MclBusWriter {
 public:
-  explicit MclBusWriter(gpio_num_t pin, BL3500Version version = BL3500Version::MK1);
+  explicit MclBusWriter(gpio_num_t pin);
 
-  void begin();
+  void begin(BL3500Version version);
 
   // sends bits ("1011...") framed as AGC + Start + data + Stop (+ the
   // trailing pulse if this writer was constructed with version=MK2)

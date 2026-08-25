@@ -73,65 +73,81 @@ Pin 7 ─── Shield (GND)        ──────────────�
   pull-up since there's no Master  [2K2]   │                              │
                                      │     │                              │
                                    +5V     │                              │
+                                          [R3]                            │
+                                          10k                             │
                                            │                              │
-                                          [R3]                            │ (collector)
-                                          10k                           ┌─┴─┐
-                                           │                            │   │
-                                GPIO34 ────┤                            │Q1 │  BC847 (NPN)
-                                (RX)       │                  (base)    │   │
-                                         [R4]              ┌────────────┤   │
-                                          15k              │            └─┬─┘
-                                           │              [R1]            │ (emitter)
-                                          GND             2k2             │
-                                                           │             GND
-                                GPIO25 ────────────────────┤
-                                (TX)                       │
-                                                          [R2]
-                                                          10k
-                                                           │
-                                                          GND
+                                GPIO1  ────┤                              │
+                                (RX)       │                              │ 
+                                          [R4]                            │
+                                          22k                             │ (collector) 
+                                           │                            ┌─┴─┐   
+                                          GND                           │   │
+                                                                (base)  | T1| BC847 (NPN)
+                                GPIO3  ─────[R1] 2k2───────┬────────────┤   │
+                                 (TX)                      │            └─┬─┘
+                                                           │              │ (emitter)
+                                                          [R2]            │
+                                                          10k             │
+                                                           │              │
+                                                          GND            GND
 
                     ESP32 — GND   ───────────────────────────────────────────► Beolab 3500 (pin 7)
  
  
- Beolab MK2 
-                    ESP32 - 34  you don't need the  GPIO34 ─ line above
-                    ESP32 - 5v+    ───────────────────────────────────────────► Beolab 3500 MKII (pin 4)
-                    or (Optional MKII with display)
-                    ESP32 Pin ?    ───────────────────────────────────────────► Beolab 3500 MKII (pin 4)
+ Beolab MK2 - GPIO1 (RX) line above isn't needed, MK2 never calls reader.begin()
+
+                    GPIO5  (Mute)          ─────────────────────────────────────────► Beolab 3500 MKII (pin 4)
+                    GPIO43 (MK2 detection) ◄───────────────────────────────────────── ESP32 +3V3  (wire this on MK2 boards so MK2_DETECTED reads HIGH)
+                    GPIO9  (External Force Mute) ◄──────────────────────────────────  external mute source (HIGH = mute)
 ```
+
+Pin numbers above are for `m5_stamp_S3` (the active `default_envs`); `esp32_wrover` uses different physical pins for the same circuit (GPIO34/25/26 for RX/TX/Mute - see the `#ifdef` block at the top of `src/main.cpp`).
+
+All named pins on `m5_stamp_S3`, and what each one does in MK1 vs MK2 (`blVersion` is now auto-detected at boot via `MK2_DETECTED`, not hand-set - see `src/main.cpp`'s `setup()`):
+
+| Pin | MK1 | MK2 |
+|---|---|---|
+| GPIO1  | `MCL_RX_PIN` - reads the bus | unused (`reader.begin()` not called) |
+| GPIO3  | `MCL_TX_PIN` - sends on the bus | `MCL_TX_PIN` - sends on the bus |
+| GPIO5  | `KEY_PIN_LEFT` (nav key input) | `MK2_MUTE_PIN` (mute output to Beolab pin 4) |
+| GPIO7  | `KEY_PIN_RIGHT` (nav key input) | unused |
+| GPIO9  | `KEY_PIN_STOP` (nav key input) | `MK2_BL_MUTE_PIN` (reads an external (BL) mute signal) |
+| GPIO43 | `SOURCE_PINS` Radio output *(after boot)* | `MK2_DETECTED` (read once at boot to pick MK1 vs MK2) |
+| GPIO44 | `SOURCE_PINS` TV output | unused |
+
+GPIO5/9/43 are deliberately shared between an MK1-only and an MK2-only purpose - safe because `blVersion` is fixed for the whole run (decided once at boot from GPIO43) and the MK1-only code (`beginKeyPins()`/`pressKey()`/`beginSourcePins()`) vs MK2-only code (the mute-mirror block in `loop()`) never both run in the same boot. GPIO43 is the odd one out: it's read once as `MK2_DETECTED` *before* `blVersion` is known, then - only on MK1 - repurposed as the Radio source-select output for the rest of that run.
+
 
 ### Schematic (per-source select outputs)
 
 One GPIO per audio source (`SOURCE_PINS[]` in `src/common/GpioOutputs.cpp`), driven HIGH for whichever source is currently active and LOW for all others. A separate board reads these directly — no decoding needed on its side:
 
 ```
-ESP32 — wrover  ⚠️ work in progress, will change
+ESP32 — m5_stamp_S3  ⚠️ work in progress, will change
 ┌───────────────────────────┐
-│  GPIO4  (TV)      ●───────┼──► HIGH while TV is the active source
-│  GPIO5  (Radio)   ●───────┼──► HIGH while Radio is the active source
-│  GPIO17 (PC)      ●───────┼──► ...             ──► to a separate audio-switch board
-│  GPIO19 (CD)      ●───────┼──► ...                 (not part of this project)
-│  GPIO22 (Phono)   ●───────┼──► ...
+│  GPIO44 (TV)      ●───────┼──► HIGH while TV is the active source
+│  GPIO43 (Radio)   ●───────┼──► HIGH while Radio is the active source
 └───────────────────────────┘
 ```
 
-Currently active in `SOURCE_PINS[]`; the rest of the 13 sources (V.Aux, A.Aux, V.Tape, DVD, Sat, A.Tape, A.Tape2, CD2) are commented out for now, not disconnected for any technical reason — just trimmed down while testing.
+Currently active in `SOURCE_PINS[]` (MK1 only); PC and CD are commented out for now (GPIO17/19 aren't broken out on the Stamp S3 module - see the pin table above), along with the rest of the 13 sources (V.Aux, A.Aux, V.Tape, DVD, Sat, Phono, A.Tape, A.Tape2, CD2), not disconnected for any technical reason - just trimmed down while testing.
 
-Pin numbers are placeholders for the current dev board (`upesy_wrover`) and free to reassign .
+Pin numbers are placeholders and free to reassign - see `src/common/GpioOutputs.cpp` for the current board-specific list.
 
 ### Schematic (navigation key outputs) could be used for Bluetooth navigation
 
 Same pattern as the per-source outputs above, but for the Left/Right/Stop keys (`KEY_PINS[]` in `src/common/GpioOutputs.cpp`, dispatched from `handleBl3500Key()` in `src/main.cpp`), intercepted *before* the source-select mapping — Left(18)/Right(20) would otherwise collide with real device numbers once `+192` is applied (18+192=210=CD, 20+192=212=A.Tape2). Idea: drive a Bluetooth controller's Next/Prev/Pause. Not wired up yet, and unlike the sources, these three key values are only derived from the same `&0x1F` formula — not individually confirmed against real Beolab 3500 hardware:
 
 ```
-ESP32 - wrover⚠️ work in progress, will change
+ESP32 - m5_stamp_S3 ⚠️ work in progress, will change
 ┌───────────────────────────┐
-│  GPIO12 (Left)   ●────────┼──► HIGH while Left is pressed   (-> Bluetooth Prev?)
-│  GPIO13 (Right)  ●────────┼──► HIGH while Right is pressed  (-> Bluetooth Next?)
-│  GPIO14 (Stop)   ●────────┼──► HIGH while Stop is pressed   (-> Bluetooth Pause?)
+│  GPIO5  (Left)   ●────────┼──► HIGH while Left is pressed   (-> Bluetooth Prev?)
+│  GPIO7  (Right)  ●────────┼──► HIGH while Right is pressed  (-> Bluetooth Next?)
+│  GPIO9  (Stop)   ●────────┼──► HIGH while Stop is pressed   (-> Bluetooth Pause?)
 └───────────────────────────┘
 ```
+
+GPIO5/9 are shared with `MK2_MUTE_PIN`/`MK2_BL_MUTE_PIN` (MK1-only vs MK2-only, see the pin table above) - not a typo.
 
 ### Protocol notes (MCL-2 "Datalink '86")
 
