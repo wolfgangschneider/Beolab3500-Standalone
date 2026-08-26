@@ -110,7 +110,7 @@ static bool handleBl3500Key(uint32_t key) {
   return true;
 }
 
-// sendSource/sendSound/sendVol/sendInit now live on MclBusWriter (see
+// sendSource/sendSoundSetup/sendVol/sendInit now live on MclBusWriter (see
 // common/MclBusWriter.hpp) - moved there so they're reusable.
 // GpioOutputs::setActiveSourcePin() stays here in
 // main.cpp on purpose - it's a downstream hardware-output concern the
@@ -123,7 +123,7 @@ static bool handleBl3500Key(uint32_t key) {
 // besides the boot sequence in setup(). Same commands for both
 // revisions except "init"/"vol" (MK2 only, no MK1 equivalent):
 //   "sound <subType> <value>" (e.g. "sound 3 68") - calls
-//     writer.sendSound(subType, value), to find out what those
+//     writer.sendSoundSetup(subType, value), to find out what those
 //     actually do on real hardware.
 //   "<source name>" (e.g. "radio", "cd", "tv", ...) or a bare device
 //     number (e.g. "193"), optionally followed by a track value (e.g.
@@ -146,12 +146,12 @@ static void handleDebugSerial() {
     buf = "";
     line.trim();
 
-    if (blVersion == BL3500Version::MK2) {
+    //if (blVersion == BL3500Version::MK2) {
       String lower = line;
       lower.toLowerCase();
 
       if (lower == "init") {
-        digitalWrite(MK2_MUTE_PIN, LOW); // ensure mute is on while the init sequence runs
+        //digitalWrite(MK2_MUTE_PIN, LOW); // ensure mute is on while the init sequence runs
         writer.sendInit();
         digitalWrite(MK2_MUTE_PIN, HIGH); // ensure mute is off after the init sequence
         continue;
@@ -177,12 +177,13 @@ static void handleDebugSerial() {
       // source-name+track dispatch below, so "radio 5" etc. also works
       // here, not just for MK1 (blVersion is passed through to
       // writer.sendSource() either way).
-    }
+    //}
 
     int subType, value;
     if (sscanf(line.c_str(), "sound %d %d", &subType, &value) == 2) {
       Serial.printf("-> debug Sound frame: subType=%d value=%d\n", subType, value);
-      writer.sendSound((uint8_t) subType, (uint8_t) value);
+      writer.sendSoundSetup((uint8_t) subType, (uint8_t) value);
+     
       continue;
     }
 
@@ -198,8 +199,18 @@ static void handleDebugSerial() {
     int device = MclData::deviceFromName(nameToken);
     if (device < 0 && nameToken.toInt() >= 192) device = nameToken.toInt();
     if (device >= 0) {
-      writer.sendSource((uint8_t) device, (uint8_t) track);
-      if (blVersion == BL3500Version::MK1) GpioOutputs::setActiveSourcePin((uint8_t) device);
+      
+      // mk2 needs mute on display change
+      if(blVersion == BL3500Version::MK1) {
+        writer.sendSource((uint8_t) device, (uint8_t) track);
+        GpioOutputs::setActiveSourcePin((uint8_t) device);
+      }
+      
+      //MKI needs second frame to display source, 
+      if (blVersion == BL3500Version::MK2) {
+        writer.sendSource((uint8_t) device, (uint8_t) track);
+        writer.sendFrame(MclData::buildSelectSourceBits(device, 96, 0x00, track));
+      }
       continue;
     }
 
@@ -243,12 +254,10 @@ void setup() {
 
   pinMode(MK2_BL_MUTE_PIN, INPUT_PULLDOWN);
 
-  // NOTE: unlike the "init" debug command below, mute is NOT pulled
-  // LOW before this boot-time sendInit() call - only set HIGH after.
-  // Not yet confirmed whether that's deliberate or a leftover gap.
+  
+ // writer.sendSource(193, 1); // Radio
+  digitalWrite(MK2_MUTE_PIN, HIGH); 
   writer.sendInit();
-  writer.sendSource(193, 0); // Radio, track 0 - matches the real Master's observed first source after power-on
-  digitalWrite(MK2_MUTE_PIN, HIGH); // ensure mute is off initially
 }
 
 void loop() {

@@ -38,13 +38,14 @@ public:
   // main.cpp and (later) other callers can reuse them. This class
   // doesn't track a BL3500Version - sendSource() always builds the
   // same bit shapes for both revisions now (MclData::
-  // buildSelectSourceBits(), MclData::buildSpecialSoundBits() via
-  // sendSound() below). Confirmed on real MK1 hardware; sendVol()'s
-  // separate PowerLink.cpp-conformant MclData::buildSoundBits() call
-  // is unaffected and confirmed still working on MK2. None of these
-  // touch GPIO (e.g. the downstream active-source-pin indicator) -
-  // that stays the caller's job in main.cpp, since it's a
-  // hardware-output concern unrelated to the bus itself.
+  // buildSelectSourceBits(), MclData::buildSoundSetupBits() via
+  // sendSoundSetup() below). Confirmed on real MK1 hardware;
+  // sendVol()'s separate PowerLink.cpp-conformant MclData::
+  // buildSoundBits() call is unaffected and confirmed still working
+  // on MK2. None of these touch GPIO (e.g. the downstream
+  // active-source-pin indicator) - that stays the caller's job in
+  // main.cpp, since it's a hardware-output concern unrelated to the
+  // bus itself.
 
   // reply as Master would: Sound frame(s) + SelectSource for the
   // requested device - without this BL3500 never activates the
@@ -55,10 +56,11 @@ public:
   // no internal counter.
   void sendSource(uint8_t device, uint8_t track);
 
-  // sends a single Sound frame (MclData::buildSpecialSoundBits() shape
-  // - confirmed working on real MK1 hardware), Type fixed to 78 -
-  // subType/value are the caller's actual parameters.
-  void sendSound(uint8_t subType, uint8_t value);
+  // sends a single Sound frame as part of source setup/activation
+  // (MclData::buildSoundSetupBits() shape - confirmed working on real
+  // MK1 hardware), Type fixed to 78 - subType/value are the caller's
+  // actual parameters.
+  void sendSoundSetup(uint8_t subType, uint8_t value);
 
   // MK2 only, caller's responsibility to not call this for MK1: Sound
   // frame with Type=76, SubType=128 fixed - the confirmed "volume"

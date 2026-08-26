@@ -35,17 +35,31 @@ void MclBusWriter::sendFrame(const String &bits) {
   
 }
 
-void MclBusWriter::sendSound(uint8_t subType, uint8_t value) {
-  sendFrame(MclData::buildSpecialSoundBits(78, subType, value)); // is the range 6 => 0-72  that means 72 = 100% (3 >= 32=100%) // last parameter unknown
+void MclBusWriter::sendSoundSetup(uint8_t subType, uint8_t value) {
+  sendFrame(MclData::buildSoundSetupBits(78, subType, value)); // subType=6 => value range 0-72, 72=100% - only known true for MK1, not verified for MK2
+  sendVol(1); // gives MK1 more power
 }
 
 void MclBusWriter::sendSource(uint8_t device, uint8_t track) {
 
   String select = MclData::buildSelectSourceBits(device, 96, 0x00, track);
-  sendSound(6, 68); // 3=SubType, 68=Value - matches the real Master's observed values for Radio (see git history)
-  sendSound(6, 68); // repeat to match the real Master's observed order (Sound,Audio,Sound,Audio)
+
+  // old  send 4 frames but it looks it wor with 2 now (
+  //there was an issue that the display was one behind the source selection but now it looks it works with 2 frames)
+  // also a handmade send from esp was not recognized on BL 
+  //sendSound(6, 68); // 3=SubType, 68=Value - matches the real Master's observed values for Radio (see git history)
+  //sendSound(6, 68); // repeat to match the real Master's observed order (Sound,Audio,Sound,Audio)
+  //sendFrame(select);
+  //sendFrame(select);
+
+  sendSoundSetup(6, 68); // subType=6 => value range 0-72, 72=100% - only known true for MK1, not verified for MK2
   sendFrame(select);
-  sendFrame(select);
+
+
+
+  // for MK2 this is enought but for uniformity i'll send same as MK1
+  // sendFrame(select);
+   //pulse(1);
 }
 
 void MclBusWriter::sendVol(uint8_t value) {
@@ -57,6 +71,8 @@ void MclBusWriter::sendInit() {
   Serial.println("-> sending the first frame of the captured BW power-on sequence (rest currently commented out below)");
   sendFrame("0011000111100111111100000000100"); // Command=49, unrecognized, no known build formula - literal capture off BW1 (Beolink Wireless), frame 1 of the real 5-frame power-on sequence (rest below)
   pulse(1); // MKII trailing pulse - confirmed required for init only, not other frame types
+
+  
   /*
   aptured from Belolink wireless 1
   delay(30);

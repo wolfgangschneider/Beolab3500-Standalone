@@ -112,17 +112,19 @@ String MclData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value) {
   return bits;
 }
 
-// 47 bits = Command(8) + Type(8) + gap1(6) + SubType(8) + gap2(8) +
-// Value(8) + trailing(1). gap1/gap2/trailing reverse-engineered from
-// a real capture (bytes 33 4E B0 0F 05, 40 bit) - which unit this was
-// actually captured from (MK1? BW1/Beolink Wireless?) is no longer
-// known; earlier comments here claimed MK1, that's now in doubt and
-// unconfirmed either way. NOT PowerLink.cpp-conformant (see
-// buildSoundBits()) - gap1=6 puts SubType at [22,30), 3 bits later
-// than PowerLink.cpp's fixed [19,27) read. Value's low bits and the
-// trailing bit also fall past bit 40, i.e. beyond the real 40-bit
-// capture.
-String MclData::buildSpecialSoundBits(uint8_t type, uint8_t subType, uint8_t value) {
+// Used as part of source setup/activation, see MclBusWriter::
+// sendSoundSetup(). 47 bits = Command(8) + Type(8) + gap1(6) +
+// SubType(8) + gap2(8) + Value(8) + trailing(1). gap1/gap2/trailing
+// reverse-engineered from a real capture (bytes 33 4E B0 0F 05, 40
+// bit) - which unit this was actually captured from (MK1? BW1/Beolink
+// Wireless?) is no longer known; earlier comments here claimed MK1,
+// that's now in doubt and unconfirmed either way. NOT
+// PowerLink.cpp-conformant (see buildSoundBits()) - gap1=6 puts
+// SubType at [22,30), 3 bits later than PowerLink.cpp's fixed [19,27)
+// read. Value's low bits and the trailing bit also fall past bit 40,
+// i.e. beyond the real 40-bit capture. Confirmed on real MK1 hardware
+// as part of the source-setup sequence.
+String MclData::buildSoundSetupBits(uint8_t type, uint8_t subType, uint8_t value) {
   String bits;
   appendByte(bits, 51); // Command = Sound
   appendByte(bits, type);

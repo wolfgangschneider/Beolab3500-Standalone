@@ -8,7 +8,7 @@
 //
 // The parsing side (the constructor's notify-header handling) and
 // BL3500_ADDR/deviceName/deviceFromName are confirmed against Mk1
-// only. The building side (buildSelectSourceBits/buildSpecialSoundBits,
+// only. The building side (buildSelectSourceBits/buildSoundSetupBits,
 // via MclBusWriter::sendSource()) is shared as-is for MK2 too -
 // confirmed on real hardware to activate BL3500 Mk2, not just Mk1.
 //
@@ -89,17 +89,18 @@ public:
   // parameters.
   static String buildSoundBits(uint8_t type, uint8_t subType, uint8_t value);
 
-  // Alternate Sound frame shape - 47 bit, gap1/gap2 reverse-engineered
-  // from a real capture (bytes 33 4E B0 0F 05 = 40 bit) - which unit
-  // this was actually captured from (MK1? BW1/Beolink Wireless?) is no
-  // longer known; earlier comments here claimed MK1, that's now in
-  // doubt and unconfirmed either way. NOT PowerLink.cpp-conformant:
-  // its SubType field lands 3 bits later than PowerLink.cpp's fixed
-  // [19,27) read position, and its Value field's low bits + the
-  // trailing bit extend past bit 40, i.e. beyond the actual 40-bit
-  // real capture. Named "Special" rather than folded into
-  // buildSoundBits() so callers can't mistake it for equally trusted.
-  static String buildSpecialSoundBits(uint8_t type, uint8_t subType, uint8_t value);
+  // Sound frame shape used as part of source setup/activation (see
+  // MclBusWriter::sendSoundSetup()) - 47 bit, gap1/gap2 reverse-
+  // engineered from a real capture (bytes 33 4E B0 0F 05 = 40 bit) -
+  // which unit this was actually captured from (MK1? BW1/Beolink
+  // Wireless?) is no longer known; earlier comments here claimed MK1,
+  // that's now in doubt and unconfirmed either way. NOT
+  // PowerLink.cpp-conformant: its SubType field lands 3 bits later
+  // than PowerLink.cpp's fixed [19,27) read position, and its Value
+  // field's low bits + the trailing bit extend past bit 40, i.e.
+  // beyond the actual 40-bit real capture. Confirmed on real MK1
+  // hardware as part of the source-setup sequence.
+  static String buildSoundSetupBits(uint8_t type, uint8_t subType, uint8_t value);
 
   // converts a bit string ("1011...") to its unsigned value, MSB first
   static uint32_t bitsToValue(const String &s);
