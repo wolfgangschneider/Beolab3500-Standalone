@@ -19,54 +19,60 @@
 //   MclBusReader's decode).
 //
 // Shared by both Beolab 3500 revisions - confirmed identical t1..t5
-// timing/differential bit encoding on the wire (see main.cpp). The
-// one confirmed difference, gated on `version`:
-// real Mk2 Master (Beolink Wireless BL) traffic always has one extra
-// low strobe pulse after Stop, required for BL3500 Mk2 to activate
-// from our own TX - Mk1 traffic never has it.
+// timing/differential bit encoding on the wire (see main.cpp), and
+// sendFrame() itself is identical for both. The one confirmed Mk2
+// difference lives in sendInit(), not sendFrame(): the captured Mk2
+// power-on frame needs one extra low strobe pulse after Stop to
+// activate BL3500 Mk2 from our own TX - other frame types (Sound,
+// SelectSource, Vol) don't need it.
 class MclBusWriter {
 public:
   explicit MclBusWriter(gpio_num_t pin);
 
-  void begin(BL3500Version version);
+  void begin();
 
-  // sends bits ("1011...") framed as AGC + Start + data + Stop (+ the
-  // trailing pulse if this writer was constructed with version=MK2)
+  // sends bits ("1011...") framed as AGC + Start + data + Stop
   void sendFrame(const String &bits);
 
   // Higher-level protocol sends, moved here from main.cpp so both
-  // main.cpp and (later) other callers can reuse them - all branch
-  // internally on this writer's own `_version` instead of taking it
-  // as a parameter. None of these touch GPIO (e.g. the downstream
-  // active-source-pin indicator) - that stays the caller's job in
-  // main.cpp, since it's a hardware-output concern unrelated to the
-  // bus itself.
+  // main.cpp and (later) other callers can reuse them. This class
+  // doesn't track a BL3500Version - sendSource() always builds the
+  // same bit shapes for both revisions now (MclData::
+  // buildSelectSourceBits(), MclData::buildSpecialSoundBits() via
+  // sendSound() below). Confirmed on real MK1 hardware; sendVol()'s
+  // separate PowerLink.cpp-conformant MclData::buildSoundBits() call
+  // is unaffected and confirmed still working on MK2. None of these
+  // touch GPIO (e.g. the downstream active-source-pin indicator) -
+  // that stays the caller's job in main.cpp, since it's a
+  // hardware-output concern unrelated to the bus itself.
 
   // reply as Master would: Sound frame(s) + SelectSource for the
   // requested device - without this BL3500 never activates the
-  // source. MK1: Sound,Sound,SelectSource,SelectSource (matches the
-  // real Master's observed order). MK2, EXPERIMENTAL: single
-  // SelectSource only, not yet confirmed to activate BL3500 Mk2 on
-  // its own. `track` is the SelectSource frame's Value byte - a plain
-  // caller-supplied value, no internal counter.
+  // source. Sound,Sound,SelectSource,SelectSource (matches the real
+  // MK1 Master's observed order; reused as-is for MK2 - confirmed on
+  // real hardware to activate BL3500 Mk2 too). `track` is the
+  // SelectSource frame's Value byte - a plain caller-supplied value,
+  // no internal counter.
   void sendSource(uint8_t device, uint8_t track);
 
-  // sends a single Sound frame, Type fixed to 78 - subType/value are
-  // the caller's actual parameters.
+  // sends a single Sound frame (MclData::buildSpecialSoundBits() shape
+  // - confirmed working on real MK1 hardware), Type fixed to 78 -
+  // subType/value are the caller's actual parameters.
   void sendSound(uint8_t subType, uint8_t value);
 
-  // MK2 only: Sound frame with Type=76, SubType=128 fixed - the
-  // confirmed "volume" shape (see git history: gap2+Value together
-  // form a single 16-bit counter, +1282 per real Vol+ press). `value`
-  // is the caller's actual parameter. No-ops with a log line if this
-  // writer isn't MK2.
+  // MK2 only, caller's responsibility to not call this for MK1: Sound
+  // frame with Type=76, SubType=128 fixed - the confirmed "volume"
+  // shape (see git history: gap2+Value together form a single 16-bit
+  // counter, +1282 per real Vol+ press). `value` is the caller's
+  // actual parameter.
   void sendVol(uint8_t value);
 
-  // MK2 only: replays (part of) the captured power-on sequence.
-  // Currently sends just the first frame (Command=49, unrecognized,
-  // no known build formula - literal capture) - the rest of the real
-  // 5-frame sequence is written but commented out in MclBusWriter.cpp,
-  // not currently sent. No-ops with a log line if this writer isn't MK2.
+  // MK2 only, caller's responsibility to not call this for MK1:
+  // replays (part of) the captured power-on sequence. Currently sends
+  // just the first frame (Command=49, unrecognized, no known build
+  // formula - literal capture) - the rest of the real 5-frame
+  // sequence is written but commented out in MclBusWriter.cpp, not
+  // currently sent.
   void sendInit();
 
 private:
@@ -78,7 +84,6 @@ private:
   static constexpr uint32_t STROBE_LOW_US = 1562;
 
   gpio_num_t _pin;
-  BL3500Version _version;
 
   // pulls the bus LOW for the fixed strobe width, then releases it
   // for the rest of the target timing symbol's period

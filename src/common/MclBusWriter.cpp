@@ -2,8 +2,7 @@
 
 MclBusWriter::MclBusWriter(gpio_num_t pin) : _pin(pin) {}
 
-void MclBusWriter::begin(BL3500Version version) {
-  _version = version;
+void MclBusWriter::begin() {
   pinMode(_pin, OUTPUT);
   digitalWrite(_pin, LOW); // idle: transistor off, bus released
 }
@@ -32,24 +31,17 @@ void MclBusWriter::sendFrame(const String &bits) {
     lastBit = bit;
   }
   pulse(4); // Stop
-  if (_version == BL3500Version::MK2) pulse(1); // see MclBusWriter.hpp
+
+  
 }
 
 void MclBusWriter::sendSound(uint8_t subType, uint8_t value) {
-  sendFrame(MclData::buildSoundBits(78, subType, value, _version)); // is the range 6 => 0-72  that means 72 = 100% (3 >= 32=100%) // last parameter unknown
+  sendFrame(MclData::buildSpecialSoundBits(78, subType, value)); // is the range 6 => 0-72  that means 72 = 100% (3 >= 32=100%) // last parameter unknown
 }
 
 void MclBusWriter::sendSource(uint8_t device, uint8_t track) {
-  if (_version == BL3500Version::MK2) {
-    sendFrame(MclData::buildSelectSourceBits(device, 64, 0, track, BL3500Version::MK2));
-    return;
-  }
 
-  // MK1: Sound/SelectSource/Sound/SelectSource, alternating - matches
-  // the real Master's observed order (Sound,Audio,Sound,Audio). The
-  // old "2x Sound then 1x SelectSource" order never got BL3500 to
-  // actually switch.
-  String select = MclData::buildSelectSourceBits(device, 96, 0x00, track, BL3500Version::MK1);
+  String select = MclData::buildSelectSourceBits(device, 96, 0x00, track);
   sendSound(6, 68); // 3=SubType, 68=Value - matches the real Master's observed values for Radio (see git history)
   sendSound(6, 68); // repeat to match the real Master's observed order (Sound,Audio,Sound,Audio)
   sendFrame(select);
@@ -57,28 +49,23 @@ void MclBusWriter::sendSource(uint8_t device, uint8_t track) {
 }
 
 void MclBusWriter::sendVol(uint8_t value) {
-  if (_version != BL3500Version::MK2) {
-    Serial.println("-> sendVol() only available for MK2");
-    return;
-  }
-  sendFrame(MclData::buildSoundBits(76, 128, value, _version));
+  sendFrame(MclData::buildSoundBits(76, 128, value)); // MK2 only, see MclBusWriter.hpp
+  pulse(1);
 }
 
 void MclBusWriter::sendInit() {
-  if (_version != BL3500Version::MK2) {
-    Serial.println("-> sendInit() only available for MK2");
-    return;
-  }
   Serial.println("-> sending the first frame of the captured BW power-on sequence (rest currently commented out below)");
-  sendFrame("0011000111100111111100000000100"); // unknown: Command=49, unrecognized - see main.cpp's file header
+  sendFrame("0011000111100111111100000000100"); // Command=49, unrecognized, no known build formula - literal capture off BW1 (Beolink Wireless), frame 1 of the real 5-frame power-on sequence (rest below)
+  pulse(1); // MKII trailing pulse - confirmed required for init only, not other frame types
   /*
+  aptured from Belolink wireless 1
   delay(30);
-  sendFrame(MclData::buildSoundBits(76, 128, 40, BL3500Version::MK2)); // Sound (settled)
+  sendFrame(MclData::buildSoundBits(76, 128, 40)); // Sound (settled)
   delay(45);
-  sendFrame(MclData::buildSelectSourceBits(193, 64, 4, 255, BL3500Version::MK2)); // SelectSource: Radio (transient)
+  sendFrame(MclData::buildSelectSourceBits(193, 64, 4, 255)); // SelectSource: Radio (transient)
   delay(45);
-  sendFrame(MclData::buildSelectSourceBits(193, 64, 0, 5, BL3500Version::MK2)); // SelectSource: Radio (settled)
+  sendFrame(MclData::buildSelectSourceBits(193, 64, 0, 5)); // SelectSource: Radio (settled)
   delay(485);
-  sendFrame(MclData::buildSoundBits(76, 128, 40, BL3500Version::MK2)); // Sound (settled)
+  sendFrame(MclData::buildSoundBits(76, 128, 40)); // Sound (settled)
   */
 }

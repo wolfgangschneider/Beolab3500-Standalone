@@ -20,9 +20,10 @@
     activation instead works by
     replaying/building known-good frame sequences, either once at boot
     (see setup()) or via the debug Serial commands (see
-    handleDebugSerial()). Real MK2 Master traffic also has one extra
-    trailing low strobe pulse after Stop, which `writer` reproduces
-    when blVersion=MK2 (see common/MclBusWriter.hpp).
+    handleDebugSerial()). The captured Mk2 power-on frame also needs
+    one extra trailing low strobe pulse after Stop, which
+    writer.sendInit() always sends (see common/MclBusWriter.hpp) -
+    confirmed init-specific, not a general MK2-traffic property.
 
   Board: ESP32 WROVER DevKit (upesy_wrover). RX on GPIO34 (via R3/R4
   divider, see MclBusReader), TX on GPIO25 (via transistor Q1 switch) -
@@ -74,14 +75,6 @@ String board= "wroover";
 // driver and isn't a boot-strapping pin (unlike 0/2/12/15) - change if
 // it's not physically reachable on the board either.
 
-// BACKUP of Master's Sound response as a raw bitstring, kept in case
-// MclData::buildSoundBits() ever needs to be double-checked against
-// the original capture. Not used anymore - see MclBusWriter::sendSound()
-// for the dynamic equivalent: MclData::buildSoundBits(78, subType, value).
-// Bytes: 33 4E B0 0F 05 -> Command=51 (Sound), Type=78, SubType=3
-// (bit-shifted field, see BuOPowerlink/PowerLink.cpp), Value=68.
-constexpr const char *MASTER_RADIO_SOUND_BITS = "00110011010011101011000000001111000001010001000";
-
 static MclBusWriter writer(MCL_TX_PIN);
 static MclBusReader reader(MCL_RX_PIN);
 
@@ -118,9 +111,8 @@ static bool handleBl3500Key(uint32_t key) {
 }
 
 // sendSource/sendSound/sendVol/sendInit now live on MclBusWriter (see
-// common/MclBusWriter.hpp) - moved there so they're reusable and
-// self-contained (they already knew `_version`, no need to pass
-// blVersion around). GpioOutputs::setActiveSourcePin() stays here in
+// common/MclBusWriter.hpp) - moved there so they're reusable.
+// GpioOutputs::setActiveSourcePin() stays here in
 // main.cpp on purpose - it's a downstream hardware-output concern the
 // bus writer shouldn't need to know about; call sites below call it
 // explicitly right after writer.sendSource() for MK1.
@@ -136,8 +128,7 @@ static bool handleBl3500Key(uint32_t key) {
 //   "<source name>" (e.g. "radio", "cd", "tv", ...) or a bare device
 //     number (e.g. "193"), optionally followed by a track value (e.g.
 //     "radio 4", default 0) - calls writer.sendSource(device, track),
-//     as if BL3500 had just requested it (writer.sendSource() branches
-//     on its own _version internally, so this is the same call either way).
+//     as if BL3500 had just requested it.
 //   "init"   - MK2 only: calls writer.sendInit() - see common/MclBusWriter.cpp for what it currently sends
 //   "vol <value>" - MK2 only: calls writer.sendVol(value)
 static void handleDebugSerial() {
@@ -184,8 +175,8 @@ static void handleDebugSerial() {
       // none of the fixed MK2 commands matched (e.g. "init" typed
       // wrong, or "radio" with no args) - fall through to the shared
       // source-name+track dispatch below, so "radio 5" etc. also works
-      // here, not just for MK1 (writer.sendSource() already branches
-      // on its own _version).
+      // here, not just for MK1 (blVersion is passed through to
+      // writer.sendSource() either way).
     }
 
     int subType, value;
@@ -229,7 +220,7 @@ void setup() {
   if (blVersion == BL3500Version::MK1) {
     GpioOutputs::beginKeyPins();
     Serial.printf("Beolab3500-Standalone MK1 - MCL/PL Master emulator %s\n", board.c_str());
-    writer.begin(blVersion);
+    writer.begin();
     reader.begin();
      GpioOutputs::beginSourcePins(); 
     
@@ -238,7 +229,7 @@ void setup() {
 
   // MK2
   Serial.printf("Beolab3500-Standalone MK2 - Master emulator %s\n", board.c_str());
-  writer.begin(blVersion);
+  writer.begin();
   // reader.begin() intentionally not called: BL3500 Mk2 doesn't send
   // anything of its own to react to (see file header) - loop() has no
   // reactive decode path for MK2 (see loop() below), so nothing would

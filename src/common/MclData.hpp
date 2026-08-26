@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Arduino.h>
-#include "BL3500Version.hpp"
 
 // Converts between raw decoded bitstrings and the B&O MCL/PL
 // "Datalink" frame structure - parsing incoming frames and building
@@ -9,12 +8,9 @@
 //
 // The parsing side (the constructor's notify-header handling) and
 // BL3500_ADDR/deviceName/deviceFromName are confirmed against Mk1
-// only. The building side (buildSelectSourceBits/buildSoundBits) is
-// also used from main.cpp's MK2 path as an experiment - Mk2's real
-// Master traffic decodes into the same Command/Device shapes as Mk1
-// (see main.cpp's file header), so whether frames *built* the Mk1 way
-// also activate a Mk2 unit (as opposed to only literal captured-
-// sequence replay) is being tested, not yet confirmed either way.
+// only. The building side (buildSelectSourceBits/buildSpecialSoundBits,
+// via MclBusWriter::sendSource()) is shared as-is for MK2 too -
+// confirmed on real hardware to activate BL3500 Mk2, not just Mk1.
 //
 // Frame = Format(3) + Address(to)(5) + Address(from)(4) + Data
 // (manual fig. 2045-4) - only on BL3500's own short notify frame (data
@@ -63,14 +59,15 @@ public:
   // builds a SelectSource/Audio frame (Command=59, device, valueType,
   // seek, value) - field layout confirmed identical for both
   // revisions (decodeAudio() in BeoPowerlinkDisplay/src/PowerLink.cpp:
-  // Byte2=Device, Byte3=ValueType, Byte4=Seek, Byte5=Value) except MK1
-  // has one extra trailing Byte6=0x00 (undocumented, copied verbatim
-  // from Radio's real capture off a Beocenter 2300; MK2's real
-  // captures never have it - 40 bit, not 48). No internal state here -
-  // callers that need a fresh `value` each call generate it themselves
-  // (there's currently no auto-incrementing counter anywhere - see
-  // git history for why that was removed).
-  static String buildSelectSourceBits(uint8_t device, uint8_t valueType, uint8_t seek, uint8_t value, BL3500Version version = BL3500Version::MK1);
+  // Byte2=Device, Byte3=ValueType, Byte4=Seek, Byte5=Value), always 48
+  // bit including a trailing Byte6=0x00 (undocumented, copied verbatim
+  // from Radio's real capture off a Beocenter 2300 - real MK2 captures
+  // were observed without it, at 40 bit; sending it on MK2 anyway is
+  // being tested, not yet confirmed either way). No internal state
+  // here - callers that need a fresh `value` each call generate it
+  // themselves (there's currently no auto-incrementing counter
+  // anywhere - see git history for why that was removed).
+  static String buildSelectSourceBits(uint8_t device, uint8_t valueType, uint8_t seek, uint8_t value);
 
 
   // Radio's exact real captured SelectSource bitstring (device=193),
@@ -81,16 +78,28 @@ public:
 
 
 
-  // builds a Sound frame (Command=51, type, subType, value) - 47 bit
-  // for MK1, 43 bit for MK2 (gap bits at different positions/widths -
-  // see MclData.cpp). Both gap layouts are undocumented, copied
-  // verbatim from the one real capture of each revision we have (MK1:
-  // a Beocenter 2300's Radio Sound reply; MK2: Beolink Wireless BL's
-  // idle Radio Sound, verified to reproduce that real capture
-  // bit-exactly for (76,128,40)) - only type/subType/value are real
-  // parameters either way. Dynamic MK1 replacement for the
-  // MASTER_RADIO_SOUND_BITS constant kept as a backup in main.cpp.
-  static String buildSoundBits(uint8_t type, uint8_t subType, uint8_t value, BL3500Version version = BL3500Version::MK1);
+  // builds a Sound frame (Command=51, type, subType, value), 43 bit -
+  // MK2 only, confirmed PowerLink.cpp-conformant: SubType lands at
+  // bit [19,27) and Value at [35,43), exactly where
+  // BeoPowerlinkDisplay/src/PowerLink.cpp::decodeSound() reads them
+  // (verified required for Vol to actually work). gap1/gap2 come from
+  // the one real MK2 capture we have (Beolink Wireless BL's idle
+  // Radio Sound, type=76 subType=128 value=40), verified to reproduce
+  // that capture's bits exactly. Only type/subType/value are real
+  // parameters.
+  static String buildSoundBits(uint8_t type, uint8_t subType, uint8_t value);
+
+  // Alternate Sound frame shape - 47 bit, gap1/gap2 reverse-engineered
+  // from a real capture (bytes 33 4E B0 0F 05 = 40 bit) - which unit
+  // this was actually captured from (MK1? BW1/Beolink Wireless?) is no
+  // longer known; earlier comments here claimed MK1, that's now in
+  // doubt and unconfirmed either way. NOT PowerLink.cpp-conformant:
+  // its SubType field lands 3 bits later than PowerLink.cpp's fixed
+  // [19,27) read position, and its Value field's low bits + the
+  // trailing bit extend past bit 40, i.e. beyond the actual 40-bit
+  // real capture. Named "Special" rather than folded into
+  // buildSoundBits() so callers can't mistake it for equally trusted.
+  static String buildSpecialSoundBits(uint8_t type, uint8_t subType, uint8_t value);
 
   // converts a bit string ("1011...") to its unsigned value, MSB first
   static uint32_t bitsToValue(const String &s);

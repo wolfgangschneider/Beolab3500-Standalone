@@ -74,14 +74,15 @@ int MclData::deviceFromName(const String &name) {
 // for both revisions, except MK1 has one extra trailing Byte6=0x00
 // (undocumented, copied verbatim from Radio's real capture off a
 // Beocenter 2300; MK2's real captures never have it - 40 bit, not 48).
-String MclData::buildSelectSourceBits(uint8_t device, uint8_t valueType, uint8_t seek, uint8_t value, BL3500Version version) {
+String MclData::buildSelectSourceBits(uint8_t device, uint8_t valueType, uint8_t seek, uint8_t value) {
   String bits;
   appendByte(bits, 59); // Command = Audio/SelectSource
   appendByte(bits, device);
   appendByte(bits, valueType);
   appendByte(bits, seek);
   appendByte(bits, value);
-  if (version == BL3500Version::MK1) appendByte(bits, 0x00); // Byte6, MK1 only
+  //if (version == BL3500Version::MK1) 
+  appendByte(bits, 0x00); // Byte6, MK1 only
   return bits;
 }
 
@@ -93,34 +94,43 @@ String MclData::buildRadioSourceBits() {
   return "001110111100000101100000000001000000001000000000";
 }
 
-// MK1: 47 bits = Command(8) + Type(8) + gap1(6) + SubType(8) + gap2(8)
-// + Value(8) + trailing(1). gap1/gap2/trailing come from the one real
-// MK1 capture we have (Beocenter 2300, Radio's Sound reply: bytes 33
-// 4E B0 0F 05, i.e. type=78 subType=3 value=68).
-// MK2: 43 bits = Command(8) + Type(8) + gap1(3) + SubType(8) + gap2(8)
-// + Value(8), no trailing bit. gap1/gap2 come from the one real MK2
+// 43 bits = Command(8) + Type(8) + gap1(3) + SubType(8) + gap2(8) +
+// Value(8), no trailing bit. gap1/gap2 come from the one real MK2
 // capture we have (Beolink Wireless BL, idle Radio Sound: type=76
 // subType=128 value=40), verified to reproduce that capture's bits
-// exactly.
-// Both gap layouts are undocumented, copied verbatim - only
-// type/subType/value are real parameters either way.
-String MclData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value, BL3500Version version) {
+// exactly. gap1=3 puts SubType at [19,27) and Value at [35,43) -
+// bit-for-bit where PowerLink.cpp::decodeSound() reads them (confirmed
+// required for Vol to actually work).
+String MclData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value) {
   String bits;
   appendByte(bits, 51); // Command = Sound
   appendByte(bits, type);
+  bits += "101"; // gap1
+  appendByte(bits, subType);
+  bits += "10001100"; // gap2
+  appendByte(bits, value);
+  return bits;
+}
 
-  if (version == BL3500Version::MK2) {
-    bits += "101"; // gap1
-    appendByte(bits, subType);
-    bits += "10001100"; // gap2
-    appendByte(bits, value);
-  } else {
-    bits += "101100"; // gap1
-    appendByte(bits, subType);
-    bits += "11000001"; // gap2
-    appendByte(bits, value);
-    bits += '0'; // trailing
-  }
+// 47 bits = Command(8) + Type(8) + gap1(6) + SubType(8) + gap2(8) +
+// Value(8) + trailing(1). gap1/gap2/trailing reverse-engineered from
+// a real capture (bytes 33 4E B0 0F 05, 40 bit) - which unit this was
+// actually captured from (MK1? BW1/Beolink Wireless?) is no longer
+// known; earlier comments here claimed MK1, that's now in doubt and
+// unconfirmed either way. NOT PowerLink.cpp-conformant (see
+// buildSoundBits()) - gap1=6 puts SubType at [22,30), 3 bits later
+// than PowerLink.cpp's fixed [19,27) read. Value's low bits and the
+// trailing bit also fall past bit 40, i.e. beyond the real 40-bit
+// capture.
+String MclData::buildSpecialSoundBits(uint8_t type, uint8_t subType, uint8_t value) {
+  String bits;
+  appendByte(bits, 51); // Command = Sound
+  appendByte(bits, type);
+  bits += "101100"; // gap1
+  appendByte(bits, subType);
+  bits += "11000001"; // gap2
+  appendByte(bits, value);
+  bits += '0'; // trailing
   return bits;
 }
 
