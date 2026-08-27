@@ -49,12 +49,13 @@
 // set this to match the board you're about to flash - see file header
 static BL3500Version blVersion = BL3500Version::MK1;
 #ifdef BOARD_M5STAMP_S3
+constexpr gpio_num_t MCL_RX_PIN = GPIO_NUM_1;
+
 constexpr gpio_num_t MCL_TX_PIN = GPIO_NUM_3;
 constexpr gpio_num_t MK2_MUTE_PIN = GPIO_NUM_5;
 constexpr gpio_num_t MK2_BL_MUTE_PIN = GPIO_NUM_9;
 constexpr gpio_num_t MK2_DETECTED = GPIO_NUM_43;
 
-constexpr gpio_num_t MCL_RX_PIN = GPIO_NUM_1;
 String board= "stamp";
 #else
 constexpr gpio_num_t MK2_MUTE_PIN = GPIO_NUM_26;
