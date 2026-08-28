@@ -35,10 +35,13 @@ void MclBusWriter::sendFrame(const String &bits) {
   
 }
 
-//// subType=6 => value range 0-72, 72=100% - only known true for MK1, don't know pther value - get from beocenter 2300
-void MclBusWriter::sendSoundSetup(uint8_t subType=6 , uint8_t value =68) {
-  sendFrame(MclData::buildSoundSetupBits(78, subType, value)); 
-  sendVol(1); // gives MK1 more power
+/// a liitl bit of mytery - it has todo with the vol from master - but we have no master
+void MclBusWriter::sendSoundSetup( uint8_t value = 90)  {
+  
+  
+  sendFrame(MclData::buildSoundSetupBits2(78, 128, value)); 
+  // sendFrame(MclData::buildSoundSetupBits(78, 6, value)); 
+ // sendVol(d); // gives MK1 more power
 }
 
 void MclBusWriter::sendSource(uint8_t device, uint8_t track) {

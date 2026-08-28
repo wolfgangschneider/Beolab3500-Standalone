@@ -102,6 +102,27 @@ public:
   // hardware as part of the source-setup sequence.
   static String buildSoundSetupBits(uint8_t type, uint8_t subType, uint8_t value);
 
+  // buildSoundSetupBits2 - faithful reconstruction of the real
+  // BeoCenter/BeoSound 2300 Sound frame, from live captures 2026-08-28
+  // (passive GPIO34 tap between a BS2300 and a Beolab, decoded by
+  // BeoPowerlinkDisplay's sniffer). 47 bit, PowerLink.cpp-conformant
+  // field positions:
+  //   Command(8)=51 | Type(8) | gap1(3)="101" | SubType(8) |
+  //   field2(8) | Value(8) | trailing(4)="0000"
+  // vs buildSoundSetupBits()'s gap1="101100" (3 bits too long), which
+  // shifts SubType to [22:30) and Value to [38:46) and locks the
+  // decoded volume to ~32-41. Here SubType lands at [19:27) and Value
+  // at [35:43), exactly where PowerLink.cpp::decodeSound() and a real
+  // BL3500 read them - and Value is the real absolute volume (matched
+  // the BS2300 front-panel number: 34, 46, 74..80 across captures).
+  // field2 [27:35): for SubType=128 (VOLUME) the real master sends
+  // 2*Value+40 (held across 7 captures - a redundant second volume
+  // encoding). Its meaning for other SubTypes is unknown (no
+  // captures), so pass SubType=128 for volume; other SubTypes get a
+  // 2*Value+40 field2 that may be wrong. buildSoundSetupBits() (v1) is
+  // kept unchanged for A/B comparison and rollback.
+  static String buildSoundSetupBits2(uint8_t type, uint8_t subType, uint8_t value);
+
   // converts a bit string ("1011...") to its unsigned value, MSB first
   static uint32_t bitsToValue(const String &s);
 

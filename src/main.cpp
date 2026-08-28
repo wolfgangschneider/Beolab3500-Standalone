@@ -123,9 +123,14 @@ static bool handleBl3500Key(uint32_t key) {
 // automatic flow at all yet, so this is its only way to send anything
 // besides the boot sequence in setup(). Same commands for both
 // revisions except "init"/"vol" (MK2 only, no MK1 equivalent):
-//   "sound <subType> <value>" (e.g. "sound 3 68") - calls
-//     writer.sendSoundSetup(subType, value), to find out what those
-//     actually do on real hardware.
+//   "sound <value>" (e.g. "sound 40") - calls writer.sendSoundSetup(value)
+//     (the frame sendSource() uses to activate a source).
+//   "sound2 <subType> <value>" (e.g. "sound2 128 40") - one raw
+//     MclData::buildSoundSetupBits2 frame with an arbitrary subType, for
+//     probing which field BL3500 reads as the volume (field2=2*value+40).
+//   "src2 <name> [track]" - source activation written out literally
+//     (buildSoundSetupBits2 + sendVol + SelectSource), for comparing
+//     against the normal "<source name>" path. MK1 only.
 //   "<source name>" (e.g. "radio", "cd", "tv", ...) or a bare device
 //     number (e.g. "193"), optionally followed by a track value (e.g.
 //     "radio 4", default 0) - calls writer.sendSource(device, track),
@@ -181,10 +186,45 @@ static void handleDebugSerial() {
     //}
 
     int subType, value;
-    if (sscanf(line.c_str(), "sound %d %d", &subType, &value) == 2) {
-      Serial.printf("-> debug Sound frame: subType=%d value=%d\n", subType, value);
-      writer.sendSoundSetup((uint8_t) subType, (uint8_t) value);
-     
+
+    // "sound2 <subType> <value>" - one faithful Sound frame via
+    // MclData::buildSoundSetupBits2 (real BS2300 field layout). For
+    // volume use subType 128; note the effective volume BL3500 applies
+    // seems to be field2 = 2*value+40, not `value` itself. Checked
+    // before "sound" so "sound2 ..." isn't eaten by "sound %d".
+    if (sscanf(line.c_str(), "sound2 %d %d", &subType, &value) == 2) {
+      Serial.printf("-> v2 Sound frame: subType=%d value=%d (field2=2*value+40=%d)\n",
+                    subType, value, 2 * value + 40);
+      writer.sendFrame(MclData::buildSoundSetupBits2(78, (uint8_t) subType, (uint8_t) value));
+      continue;
+    }
+
+    // "sound <value>" - the setup frame sendSource() uses, via
+    // writer.sendSoundSetup(value).
+    if (sscanf(line.c_str(), "sound %d", &value) == 1) {
+      Serial.printf("-> Sound setup frame: value=%d\n", value);
+      writer.sendSoundSetup((uint8_t) value);
+      continue;
+    }
+    // "src2 <name> [track]" - source activation spelled out at the call
+    // site (Sound setup frame + sendVol + SelectSource), so the exact
+    // wire content is visible for comparison against the normal
+    // "<source name>" path. MK1 only. Volume fixed at 40.
+    if (lower.startsWith("src2 ")) {
+      String rest = line.substring(5); rest.trim();
+      String nameTok = rest;
+      int trk = 0;
+      int sp = rest.indexOf(' ');
+      if (sp >= 0) { nameTok = rest.substring(0, sp); trk = rest.substring(sp + 1).toInt(); }
+      int dev = MclData::deviceFromName(nameTok);
+      if (dev < 0 && nameTok.toInt() >= 192) dev = nameTok.toInt();
+      if (dev < 0) { Serial.println("src2: unknown source name"); continue; }
+      Serial.printf("-> v2 activation: buildSoundSetupBits2(78,128,40) + SelectSource dev=%d track=%d\n",
+                    dev, trk);
+      writer.sendFrame(MclData::buildSoundSetupBits2(78, 128, 40));
+      writer.sendVol(1); // "more power" empirical extra frame
+      writer.sendFrame(MclData::buildSelectSourceBits((uint8_t) dev, 96, 0x00, (uint8_t) trk));
+      GpioOutputs::setActiveSourcePin((uint8_t) dev);
       continue;
     }
 

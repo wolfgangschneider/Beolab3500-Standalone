@@ -124,6 +124,7 @@ String MclData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value) {
 // read. Value's low bits and the trailing bit also fall past bit 40,
 // i.e. beyond the real 40-bit capture. Confirmed on real MK1 hardware
 // as part of the source-setup sequence.
+
 String MclData::buildSoundSetupBits(uint8_t type, uint8_t subType, uint8_t value) {
   String bits;
   appendByte(bits, 51); // Command = Sound
@@ -133,6 +134,25 @@ String MclData::buildSoundSetupBits(uint8_t type, uint8_t subType, uint8_t value
   bits += "11000001"; // gap2
   appendByte(bits, value);
   bits += '0'; // trailing
+  return bits;
+}
+
+// Faithful reconstruction of the real BS2300 Sound frame - see the long
+// note in MclData.hpp. 47 bit, PowerLink.cpp-conformant field positions:
+// Command(8)=51 + Type(8) + gap1(3)="101" + SubType(8) + field2(8) +
+// Value(8) + trailing(4)="0000". For SubType=128 (VOLUME): Value is the
+// real absolute volume, field2 = 2*Value+40 (the master's redundant
+// second volume encoding, verified across 7 captures). 2*value+40 fits a
+// byte for value up to 107 (real volume is <= ~90); it wraps past that.
+String MclData::buildSoundSetupBits2(uint8_t type, uint8_t subType, uint8_t value) {
+  String bits;
+  appendByte(bits, 51); // Command = Sound
+  appendByte(bits, type);
+  bits += "101"; // gap1 (3 bits - v1's "101100" was 3 too long)
+  appendByte(bits, subType);
+  appendByte(bits, (uint8_t) (2 * value + 40)); // field2 [27:35), volume: 2*Value+40
+  appendByte(bits, value);
+  bits += "0000"; // trailing (4 bits)
   return bits;
 }
 

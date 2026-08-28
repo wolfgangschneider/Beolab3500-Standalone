@@ -56,11 +56,11 @@ public:
   // no internal counter.
   void sendSource(uint8_t device, uint8_t track);
 
-  // sends a single Sound frame as part of source setup/activation
-  // (MclData::buildSoundSetupBits() shape - confirmed working on real
-  // MK1 hardware), Type fixed to 78 - subType/value are the caller's
-  // actual parameters.
-  void sendSoundSetup(uint8_t subType, uint8_t value);
+  // sends the Sound frame that goes with source setup/activation
+  // (currently MclData::buildSoundSetupBits2(78, 128, value)). `value`
+  // is the volume field - what BL3500 actually does with it is still
+  // being probed (see main.cpp's "sound2" debug command).
+  void sendSoundSetup(uint8_t value);
 
   // MK2 only, caller's responsibility to not call this for MK1: Sound
   // frame with Type=76, SubType=128 fixed - the confirmed "volume"
