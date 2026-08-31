@@ -4,13 +4,14 @@
 
 // Converts between raw decoded bitstrings and the B&O MCL/PL
 // "Datalink" frame structure - parsing incoming frames and building
-// outgoing ones. No bus I/O (see MclBusReader/MclBusWriter for that).
+// outgoing ones. No bus I/O (see BusReader/BusWriter for that).
 //
 // The parsing side (the constructor's notify-header handling) and
 // BL3500_ADDR/deviceName/deviceFromName are confirmed against Mk1
-// only. The building side (buildSelectSourceBits/buildSoundSetupBits,
-// via MclBusWriter::sendSource()) is shared as-is for MK2 too -
-// confirmed on real hardware to activate BL3500 Mk2, not just Mk1.
+// only. The building side (buildSelectSourceBits, via both
+// MclBusWriter::sendSource() and PlBusWriter::sendSource()) is shared
+// as-is for MK2 too - confirmed on real hardware to activate BL3500
+// Mk2, not just Mk1.
 //
 // Frame = Format(3) + Address(to)(5) + Address(from)(4) + Data
 // (manual fig. 2045-4) - only on BL3500's own short notify frame (data
@@ -90,7 +91,7 @@ public:
   static String buildSoundBits(uint8_t type, uint8_t subType, uint8_t value);
 
   // Sound frame shape used as part of source setup/activation (see
-  // MclBusWriter::sendSoundSetup()) - 47 bit, gap1/gap2 reverse-
+  // MclBusWriter::sendInit()) - 47 bit, gap1/gap2 reverse-
   // engineered from a real capture (bytes 33 4E B0 0F 05 = 40 bit) -
   // which unit this was actually captured from (MK1? BW1/Beolink
   // Wireless?) is no longer known; earlier comments here claimed MK1,
@@ -100,9 +101,9 @@ public:
   // field's low bits + the trailing bit extend past bit 40, i.e.
   // beyond the actual 40-bit real capture. Confirmed on real MK1
   // hardware as part of the source-setup sequence.
-  static String buildSoundSetupBits(uint8_t type, uint8_t subType, uint8_t value);
+  static String buildSoundSetupBits_old(uint8_t type, uint8_t subType, uint8_t value);
 
-  // buildSoundSetupBits2 - faithful reconstruction of the real
+  // buildSoundSetupBits - faithful reconstruction of the real
   // BeoCenter/BeoSound 2300 Sound frame, from live captures 2026-08-28
   // (passive GPIO34 tap between a BS2300 and a Beolab, decoded by
   // BeoPowerlinkDisplay's sniffer). 47 bit, PowerLink.cpp-conformant
@@ -121,7 +122,7 @@ public:
   // captures), so pass SubType=128 for volume; other SubTypes get a
   // 2*Value+40 field2 that may be wrong. buildSoundSetupBits() (v1) is
   // kept unchanged for A/B comparison and rollback.
-  static String buildSoundSetupBits2(uint8_t type, uint8_t subType, uint8_t value);
+  static String buildSoundSetupBits(uint8_t type, uint8_t subType, uint8_t value);
 
   // converts a bit string ("1011...") to its unsigned value, MSB first
   static uint32_t bitsToValue(const String &s);

@@ -3,10 +3,14 @@
   startup
 
   Handles both Beolab 3500 hardware revisions from one firmware -
-  set `blVersion` below to match the board you're about to flash, then
-  build+upload. MK1 and MK2 share the exact same wire-level protocol
+  `blVersion` below is just the startup default, auto-detected and
+  overridden in setup() via the MK2_DETECTED GPIO, so no source edit
+  is needed to switch revision. Which *board* to build for (pin
+  numbers only) is picked via the platformio.ini env instead - see
+  the `#ifdef BOARD_M5STAMP_S3` block below. MK1 and MK2 share the
+  exact same wire-level protocol
   (t1..t5 timing, AGC preamble, differential bit encoding - see
-  common/MclBusReader.hpp) but differ in frame *content*:
+  common/BusReader.hpp) but differ in frame *content*:
   - MK1: BL3500 sends a short "notify" frame whenever a source key is
     pressed on its own remote; we reply with the same Sound +
     SelectSource frames the real Master (a Beocenter 2300) sends -
@@ -20,14 +24,16 @@
     activation instead works by
     replaying/building known-good frame sequences, either once at boot
     (see setup()) or via the debug Serial commands (see
-    handleDebugSerial()). The captured Mk2 power-on frame also needs
+    common/SerialDebugCommands.cpp). The captured Mk2 power-on frame also needs
     one extra trailing low strobe pulse after Stop, which
-    writer.sendInit() always sends (see common/MclBusWriter.hpp) -
-    confirmed init-specific, not a general MK2-traffic property.
+    PlBusWriter::sendInit() sends - confirmed init-specific, not a
+    general MK2-traffic property (see common/PlBusWriter.cpp).
 
-  Board: ESP32 WROVER DevKit (upesy_wrover). RX on GPIO34 (via R3/R4
-  divider, see MclBusReader), TX on GPIO25 (via transistor Q1 switch) -
-  same electrical interface for both revisions.
+  Board: two platformio.ini envs, `esp32_wrover` (ESP32 WROVER DevKit)
+  and `m5_stamp_S3` (M5Stack Stamp S3, the default). RX/TX/mute pins
+  differ between them - see the #ifdef block below, or BusReader for
+  the RX-side electrical interface (same divider+transistor circuit
+  for both revisions, just different GPIOs per board).
 
   Per B&O MCL-2 Service Manual ("Datalink '86"), MK1 frame content:
   - Timing symbols: t1=3.125ms t2=6.250ms t3=9.375ms (data),
@@ -41,10 +47,15 @@
 */
 
 #include <Arduino.h>
-#include "common/MclBusReader.hpp"
+#include "common/BL3500Version.hpp"
+#include "common/BusReader.hpp"
+#include "common/BusWriter.hpp"
 #include "common/MclBusWriter.hpp"
+#include "common/PlBusWriter.hpp"
 #include "common/MclData.hpp"
 #include "common/GpioOutputs.hpp"
+#include "common/SerialDebugCommands.hpp"
+#include "common/Beo4KeysOnMK1.hpp"
 
 // set this to match the board you're about to flash - see file header
 static BL3500Version blVersion = BL3500Version::MK1;
@@ -67,7 +78,7 @@ String board= "wroover";
 #endif
 
 // MK2 only: BL3500 Mk2's display doesn't update correctly unless this
-// is driven around writer.sendInit() - own dedicated pin, deliberately
+// is driven around writer->sendInit() - own dedicated pin, deliberately
 // not GPIO14 (that's GpioOutputs::KEY_PIN_STOP, MK1's Stop nav key -
 // must stay distinct even though MK1/MK2 never run in the same build).
 // NOT GPIO34/35/36/39 - those are input-only on the ESP32 (no output
@@ -76,188 +87,22 @@ String board= "wroover";
 // driver and isn't a boot-strapping pin (unlike 0/2/12/15) - change if
 // it's not physically reachable on the board either.
 
-static MclBusWriter writer(MCL_TX_PIN);
-static MclBusReader reader(MCL_RX_PIN);
+// only one concrete writer ever exists - constructed with `new` in
+// setup() once blVersion is finalized there (MK2 auto-detect via GPIO
+// happens there, so it isn't known yet at this point during static
+// initialization).
+static BusWriter *writer = nullptr;
+static BusReader reader(MCL_RX_PIN);
+// bound by reference to `writer`/`blVersion` above - see SerialDebugCommands.hpp
+static SerialDebugCommands debugCommands(writer, blVersion, MK2_MUTE_PIN);
 
-// Sender address navigation-key notify frames were observed to use,
-// distinct from BL3500_ADDR (12) used for source-select notifies. Not
-// otherwise identified (same open question as the still-unexplained
-// address 11 seen elsewhere) - only used here to separate navigation
-// keys from source keys that alias to the same Beo4 value (see
-// handleBl3500Key() call site in loop() for the specific collisions).
-// MK1 only.
-constexpr uint32_t NAV_KEY_ADDR = 9;
-
-
-
-// Called for every BL3500 notify with the raw Beo4 key code it
-// reported (before it's mapped to a source device via +192 - Left/
-// Right/Stop would otherwise collide with real source device numbers:
-// 18+192=210=CD, 20+192=212=A.Tape2). Returns true if the key was
-// handled here, so loop() skips the normal source-select reply for it.
-// Key values are (BEO_CMD_XXX & 0x1F) from the esp32_beo4 library,
-// same formula as the sources - not yet verified against real
-// hardware for these three. MK1 only.
-static bool handleBl3500Key(uint32_t key) {
-  gpio_num_t pin;
-  switch (key) {
-    case 18: pin = GpioOutputs::KEY_PIN_LEFT;  break; // Left  (BEO_CMD_LEFT  0x32 & 0x1F)
-    case 20: pin = GpioOutputs::KEY_PIN_RIGHT; break; // Right (BEO_CMD_RIGHT 0x34 & 0x1F)
-    case 22: pin = GpioOutputs::KEY_PIN_STOP;  break; // Stop  (BEO_CMD_STOP  0x36 & 0x1F)
-    default: return false;
-  }
-  Serial.printf("-> key %u: GPIO%d pressed\n", key, (int) pin);
-  GpioOutputs::pressKey(pin);
-  return true;
-}
-
-// sendSource/sendSoundSetup/sendVol/sendInit now live on MclBusWriter (see
-// common/MclBusWriter.hpp) - moved there so they're reusable.
-// GpioOutputs::setActiveSourcePin() stays here in
-// main.cpp on purpose - it's a downstream hardware-output concern the
-// bus writer shouldn't need to know about; call sites below call it
-// explicitly right after writer.sendSource() for MK1.
-
-// DEBUG: type a line over Serial to test without the real Master
-// present. Not part of MK1's normal notify-driven flow; MK2 has no
-// automatic flow at all yet, so this is its only way to send anything
-// besides the boot sequence in setup(). Same commands for both
-// revisions except "init"/"vol" (MK2 only, no MK1 equivalent):
-//   "sound <value>" (e.g. "sound 40") - calls writer.sendSoundSetup(value)
-//     (the frame sendSource() uses to activate a source).
-//   "sound2 <subType> <value>" (e.g. "sound2 128 40") - one raw
-//     MclData::buildSoundSetupBits2 frame with an arbitrary subType, for
-//     probing which field BL3500 reads as the volume (field2=2*value+40).
-//   "src2 <name> [track]" - source activation written out literally
-//     (buildSoundSetupBits2 + sendVol + SelectSource), for comparing
-//     against the normal "<source name>" path. MK1 only.
-//   "<source name>" (e.g. "radio", "cd", "tv", ...) or a bare device
-//     number (e.g. "193"), optionally followed by a track value (e.g.
-//     "radio 4", default 0) - calls writer.sendSource(device, track),
-//     as if BL3500 had just requested it.
-//   "init"   - MK2 only: calls writer.sendInit() - see common/MclBusWriter.cpp for what it currently sends
-//   "vol <value>" - MK2 only: calls writer.sendVol(value)
-static void handleDebugSerial() {
-  static String buf; // accumulates across loop() calls, so slow typing never times out
-
-  while (Serial.available()) {
-    char c = Serial.read();
-    if (c != '\n' && c != '\r') {
-      buf += c;
-      continue;
-    }
-    if (buf.length() == 0) continue; // ignore a bare \r\n pair / empty line
-
-    String line = buf;
-    buf = "";
-    line.trim();
-
-    //if (blVersion == BL3500Version::MK2) {
-      String lower = line;
-      lower.toLowerCase();
-
-      if (lower == "init") {
-        //digitalWrite(MK2_MUTE_PIN, LOW); // ensure mute is on while the init sequence runs
-        writer.sendInit();
-        digitalWrite(MK2_MUTE_PIN, HIGH); // ensure mute is off after the init sequence
-        continue;
-      }
-
-      int volValue;
-      if (sscanf(line.c_str(), "vol %d", &volValue) == 1) {
-        Serial.printf("-> debug Vol frame: value=%d\n", volValue);
-        writer.sendVol((uint8_t) volValue);
-        continue;
-      }
-
-      // "radio"/"radio <track>" is NOT handled here - it falls through
-      // to the shared source-name+track dispatch below (same as MK1),
-      // calling writer.sendSource(193, track). The literal 6-frame real
-      // Radio-press capture this used to replay (SelectSource,Sound,
-      // SelectSource,Sound,SelectSource,Sound - gap2="10101010" on its
-      // Sound frames, not reproducible via buildSoundBits(), see git
-      // history) is no longer wired to any command.
-
-      // none of the fixed MK2 commands matched (e.g. "init" typed
-      // wrong, or "radio" with no args) - fall through to the shared
-      // source-name+track dispatch below, so "radio 5" etc. also works
-      // here, not just for MK1 (blVersion is passed through to
-      // writer.sendSource() either way).
-    //}
-
-    int subType, value;
-
-    // "sound2 <subType> <value>" - one faithful Sound frame via
-    // MclData::buildSoundSetupBits2 (real BS2300 field layout). For
-    // volume use subType 128; note the effective volume BL3500 applies
-    // seems to be field2 = 2*value+40, not `value` itself. Checked
-    // before "sound" so "sound2 ..." isn't eaten by "sound %d".
-    if (sscanf(line.c_str(), "sound2 %d %d", &subType, &value) == 2) {
-      Serial.printf("-> v2 Sound frame: subType=%d value=%d (field2=2*value+40=%d)\n",
-                    subType, value, 2 * value + 40);
-      writer.sendFrame(MclData::buildSoundSetupBits2(78, (uint8_t) subType, (uint8_t) value));
-      continue;
-    }
-
-    // "sound <value>" - the setup frame sendSource() uses, via
-    // writer.sendSoundSetup(value).
-    if (sscanf(line.c_str(), "sound %d", &value) == 1) {
-      Serial.printf("-> Sound setup frame: value=%d\n", value);
-      writer.sendSoundSetup((uint8_t) value);
-      continue;
-    }
-    // "src2 <name> [track]" - source activation spelled out at the call
-    // site (Sound setup frame + sendVol + SelectSource), so the exact
-    // wire content is visible for comparison against the normal
-    // "<source name>" path. MK1 only. Volume fixed at 40.
-    if (lower.startsWith("src2 ")) {
-      String rest = line.substring(5); rest.trim();
-      String nameTok = rest;
-      int trk = 0;
-      int sp = rest.indexOf(' ');
-      if (sp >= 0) { nameTok = rest.substring(0, sp); trk = rest.substring(sp + 1).toInt(); }
-      int dev = MclData::deviceFromName(nameTok);
-      if (dev < 0 && nameTok.toInt() >= 192) dev = nameTok.toInt();
-      if (dev < 0) { Serial.println("src2: unknown source name"); continue; }
-      Serial.printf("-> v2 activation: buildSoundSetupBits2(78,128,40) + SelectSource dev=%d track=%d\n",
-                    dev, trk);
-      writer.sendFrame(MclData::buildSoundSetupBits2(78, 128, 40));
-      writer.sendVol(1); // "more power" empirical extra frame
-      writer.sendFrame(MclData::buildSelectSourceBits((uint8_t) dev, 96, 0x00, (uint8_t) trk));
-      GpioOutputs::setActiveSourcePin((uint8_t) dev);
-      continue;
-    }
-
-    // "<source name>" or "<source name> <track>" (e.g. "radio 4") -
-    // track defaults to 0 if not given.
-    String nameToken = line;
-    int track = 0;
-    int spaceIdx = line.indexOf(' ');
-    if (spaceIdx >= 0) {
-      nameToken = line.substring(0, spaceIdx);
-      track = line.substring(spaceIdx + 1).toInt();
-    }
-    int device = MclData::deviceFromName(nameToken);
-    if (device < 0 && nameToken.toInt() >= 192) device = nameToken.toInt();
-    if (device >= 0) {
-      
-      // mk2 needs mute on display change
-      if(blVersion == BL3500Version::MK1) {
-        writer.sendSource((uint8_t) device, (uint8_t) track);
-        GpioOutputs::setActiveSourcePin((uint8_t) device);
-      }
-      
-      //MKI needs second frame to display source, 
-      if (blVersion == BL3500Version::MK2) {
-        writer.sendSource((uint8_t) device, (uint8_t) track);
-        writer.sendFrame(MclData::buildSelectSourceBits(device, 96, 0x00, track));
-      }
-      continue;
-    }
-
-    Serial.println("debug: expected \"sound <subType> <value>\" (e.g. \"sound 3 68\") or a source name (radio, tv, cd, ...), optionally followed by a track value (e.g. \"radio 4\")");
-  }
-}
+// sendSource()/sendVol()/sendInit() live on BusWriter's two subclasses
+// (see common/MclBusWriter.hpp, common/PlBusWriter.hpp) so they're
+// reusable through the one `writer` pointer. GpioOutputs::
+// setActiveSourcePin() stays out of BusWriter on purpose - it's a
+// downstream hardware-output concern the bus writer shouldn't need to
+// know about; call sites call it explicitly right after
+// writer->sendSource() for MK1 (see loop() below and SerialDebugCommands.cpp).
 
 void setup() {
   Serial.begin(115200);
@@ -265,63 +110,61 @@ void setup() {
     pinMode(MK2_DETECTED, INPUT_PULLDOWN);
 
   if (digitalRead(MK2_DETECTED) == HIGH) {
-    Serial.println("MK2 detected via GPIO44");
+    Serial.printf("MK2 detected via GPIO%d\n", (int) MK2_DETECTED);
     blVersion = BL3500Version::MK2;
-  } 
+  }
 
+  // blVersion is now final - MK1/MK2 setup differs from here on,
+  // including which concrete writer type gets constructed below (see
+  // writer's declaration above for why this can't happen earlier).
   if (blVersion == BL3500Version::MK1) {
     GpioOutputs::beginKeyPins();
     Serial.printf("Beolab3500-Standalone MK1 - MCL/PL Master emulator %s\n", board.c_str());
-    writer.begin();
+    writer = new MclBusWriter(MCL_TX_PIN); // never deleted - lives for the rest of the run
+    writer->begin();
     reader.begin();
-     GpioOutputs::beginSourcePins(); 
-    
+     GpioOutputs::beginSourcePins();
+
     return;
   }
 
   // MK2
   Serial.printf("Beolab3500-Standalone MK2 - Master emulator %s\n", board.c_str());
-  writer.begin();
-  // reader.begin() intentionally not called: BL3500 Mk2 doesn't send
-  // anything of its own to react to (see file header) - loop() has no
-  // reactive decode path for MK2 (see loop() below), so nothing would
-  // ever drain the RX queue.
+  writer = new PlBusWriter(MCL_TX_PIN); // never deleted - lives for the rest of the run
+  writer->begin();
+  // reader.begin() intentionally not called: MK2 has nothing to react
+  // to and no decode path in loop() to drain it (see file header).
 
-  // Important: toggling mute around the init sequence is only
-  // necessary for the display - otherwise the source still activates,
-  // but the display doesn't update correctly (it only updates once
-  // the init sequence has completed). See MK2_MUTE_PIN above.
+  // Mute LOW during init is only needed for the display to update
+  // correctly - not done here (mute just goes HIGH once, before
+  // sendInit()); loop()'s mute-mirror takes over afterwards anyway.
   pinMode(MK2_MUTE_PIN, OUTPUT);
 
   pinMode(MK2_BL_MUTE_PIN, INPUT_PULLDOWN);
 
-  
- // writer.sendSource(193, 1); // Radio
-  digitalWrite(MK2_MUTE_PIN, HIGH); 
-  writer.sendInit();
+  digitalWrite(MK2_MUTE_PIN, HIGH);
+  writer->sendInit();
 }
 
 void loop() {
  
  
-   //Serial.printf("loop() tick\n");
-  handleDebugSerial();
+
+  debugCommands.poll();
 
   if (blVersion == BL3500Version::MK2) {
-    // mute from BL device - WIP. Gated to MK2-only on purpose: MK2_MUTE_PIN/
-    // MK2_BL_MUTE_PIN are shared physical GPIOs with the MK1-only
-    // KEY_PIN_LEFT/STOP (see GpioOutputs.hpp) - safe to reuse only because
-    // this runs exclusively when blVersion==MK2, and beginKeyPins()/
-    // pressKey() run exclusively when blVersion==MK1, so the two never
-    // touch the same pin in the same running mode.
+    // mute from BL device - WIP. MK2-gated on purpose: MK2_MUTE_PIN/
+    // MK2_BL_MUTE_PIN share physical GPIOs with MK1-only KEY_PIN_LEFT/
+    // STOP (see GpioOutputs.hpp) - safe since MK1 and MK2 code never
+    // run in the same boot.
     bool mk2Mute = digitalRead(MK2_BL_MUTE_PIN) == HIGH;
     digitalWrite(MK2_MUTE_PIN, !mk2Mute); // mirror the external (BL) mute signal to the MK2's own mute pin
    // Serial.printf("loop() tick: MK2_BL_MUTE_PIN=%d -> MK2_MUTE_PIN=%d\n", mk2Mute, !mk2Mute);
-    return; // no automatic flow yet - handleDebugSerial()'s commands are the only TX trigger
+    return; // no automatic flow yet - debugCommands.poll() is the only TX trigger
   }
 
   // 1. wait (briefly - so the Serial check above stays responsive) for
-  //    the next complete frame; see MclBusReader::poll
+  //    the next complete frame; see BusReader::poll
   String bits;
   if (!reader.poll(bits, pdMS_TO_TICKS(50))) return;
 
@@ -346,18 +189,11 @@ void loop() {
   //    discriminated anything.
   if (frame.data.length() >= 8) return;
 
-  // 5. Left/Right/Stop switch a GPIO instead of a source reply. Gated on
-  //    addrFrom==NAV_KEY_ADDR (not just key value) because the Beo4 key
-  //    space is shared between navigation and source commands: CD's key
-  //    (0x92&0x1F=18) equals Left's (0x32&0x1F=18), and A.Tape2's
-  //    (0x94&0x1F=20) equals Right's (0x34&0x1F=20). Without the address
-  //    check, a real CD/A.Tape2 request from BL3500 (addrFrom=12) would
-  //    misfire the Left/Right pin instead of (or as well as) replying -
-  //    navigation keys were observed coming from a *different* sender
-  //    address (9) than BL3500's own source notify (12), so checking
-  //    addrFrom here is what actually disambiguates the two.
+  // 5. Left/Right/Stop switch a GPIO instead of a source reply - see
+  //    Beo4KeysOnMK1.cpp for why this needs the addrFrom check too
+  //    (not just the key value).
   uint32_t key = MclData::bitsToValue(frame.data);
-  if (frame.addrFrom == NAV_KEY_ADDR && handleBl3500Key(key)) return;
+  if (Beo4KeysOnMK1::handle(frame.addrFrom, key)) return;
 
   // 6. everything else must be BL3500's own source-select notify
   //    (addrFrom=12) with a Beo4 key code (& 0x1F) already mapped to a
@@ -365,6 +201,6 @@ void loop() {
   if (frame.addrFrom != MclData::BL3500_ADDR || frame.device < 0) return;
 
   // 7. reply as Master would, and drive the matching source pin
-  writer.sendSource((uint8_t) frame.device, 1);
+  writer->sendSource((uint8_t) frame.device, 1);
   GpioOutputs::setActiveSourcePin((uint8_t) frame.device);
 }

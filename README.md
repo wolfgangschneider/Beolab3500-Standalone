@@ -136,7 +136,7 @@ Pin numbers are placeholders and free to reassign - see `src/common/GpioOutputs.
 
 ### Schematic (navigation key outputs) could be used for Bluetooth navigation
 
-Same pattern as the per-source outputs above, but for the Left/Right/Stop keys (`KEY_PINS[]` in `src/common/GpioOutputs.cpp`, dispatched from `handleBl3500Key()` in `src/main.cpp`), intercepted *before* the source-select mapping — Left(18)/Right(20) would otherwise collide with real device numbers once `+192` is applied (18+192=210=CD, 20+192=212=A.Tape2). Idea: drive a Bluetooth controller's Next/Prev/Pause. Not wired up yet, and unlike the sources, these three key values are only derived from the same `&0x1F` formula — not individually confirmed against real Beolab 3500 hardware:
+Same pattern as the per-source outputs above, but for the Left/Right/Stop keys (`KEY_PINS[]` in `src/common/GpioOutputs.cpp`, dispatched from `Beo4KeysOnMK1::handle()`), intercepted *before* the source-select mapping — Left(18)/Right(20) would otherwise collide with real device numbers once `+192` is applied (18+192=210=CD, 20+192=212=A.Tape2). Idea: drive a Bluetooth controller's Next/Prev/Pause. Not wired up yet, and unlike the sources, these three key values are only derived from the same `&0x1F` formula — not individually confirmed against real Beolab 3500 hardware:
 
 ```
 ESP32 - m5_stamp_S3 ⚠️ work in progress, will change
@@ -174,7 +174,7 @@ Simple, two things needed — tie **PL4** to **+5V**, and send `0011000111100111
 ### With display
 
 It gets more complicated — two additional requirements:
-1. After the frame's normal Stop (t4), one more t1 pulse (3.125ms).
+1. After a frame's normal Stop (t4), one more t1 pulse (3.125ms) - applies to every MK2 command, not just the init sequence.
 2. Mute (`MK2_MUTE_PIN`, GPIO26 in `main.cpp`) must only go HIGH *after* that init sequence (`0011000111100111111100000000100`) has finished sending — it has to stay LOW for the whole duration of the sequence.
 
 ### Schematic (bus interface)
@@ -204,23 +204,27 @@ Pin 7 ─── Shield (GND)    ────────────────
 
 Both Beolab 3500 revisions share one bus implementation (confirmed identical wire protocol) and one entry point:
 
-- `src/main.cpp` — reads `blVersion` to pick MK1 or MK2 behavior:
+- `src/main.cpp` — auto-detects MK1 vs MK2 via GPIO at boot and points a single `BusWriter *writer` at the matching subclass:
   - **MK1**: fully automatic — read an MCL/PL notify frame, filter for the Beolab 3500's request, reply, drive the active source pin.
-  - **MK2**: no automatic flow (BL3500 Mk2 doesn't send anything of its own onto the bus — it's a passive speaker, all traffic originates from the real Master) — `setup()` sends a built power-on sequence once at boot (`writer.sendInit()`), and `handleDebugSerial()`'s commands are otherwise the only way to send anything: `init` and `vol <value>` (MK2 only), plus the shared `sound <subType> <value>` and `<source name> [track]` commands also used by MK1.
+  - **MK2**: no automatic flow (BL3500 Mk2 doesn't send anything of its own onto the bus — it's a passive speaker, all traffic originates from the real Master) — `setup()` sends a built power-on sequence once at boot (`writer->sendInit()`), and `SerialDebugCommands`'s Serial commands are otherwise the only way to send anything: `init` and `vol <value>` (MK2 only), plus the shared `<source name> [track]` command also used by MK1.
 - `src/common/`:
-  - `BL3500Version.hpp` — the `MK1`/`MK2` enum used throughout instead of an unnamed bool flag
-  - `MclBusReader.*` — RMT-based bus capture and pulse-to-bit decoding, shared by both revisions
-  - `MclBusWriter.*` — bit-to-pulse encoding and transmission, plus the higher-level protocol sends (`sendSource`/`sendSound`/`sendVol`/`sendInit`) built on top of it; shared by both revisions, branches internally on its own `BL3500Version` (e.g. MK2's trailing pulse) — see [Beolab 3500 Mk II](#beolab-3500-mk-ii)
-  - `MclData.*` — frame parsing/building (header fields, device mapping, Sound/SelectSource frame construction) — parsing is confirmed against MK1 only; the builders take a `BL3500Version` too and are also used experimentally from MK2
+  - `BL3500Version.hpp` — the `MK1`/`MK2` enum, decided once at boot and used to pick the writer subclass and gate MK1-/MK2-only code
+  - `SerialDebugCommands.*` — the Serial command-line handler (`init`/`vol <value>`/`<source name> [track]`), polled from `main.cpp`'s `loop()`
+  - `BusReader.*` — RMT-based bus capture and pulse-to-bit decoding, shared by both revisions (MK1 only calls `begin()`/`poll()` on it - MK2 has nothing to read)
+  - `BusWriter.*` — base class: bit-to-pulse encoding/transmission (`begin`/`sendFrame`/`pulse`, identical for both revisions) plus the `sendSource`/`sendVol`/`sendInit` interface, implemented per revision by:
+    - `MclBusWriter.*` — MK1's real frame content
+    - `PlBusWriter.*` — MK2's real frame content (including its extra trailing pulse - see [Beolab 3500 Mk II](#beolab-3500-mk-ii))
+  - `MclData.*` — frame parsing/building (header fields, device mapping, Sound/SelectSource frame construction) — parsing is confirmed against MK1 only; the builders don't take a `BL3500Version` (each subclass above just calls them with different arguments)
   - `GpioOutputs.*` — the downstream per-source and navigation-key GPIO outputs, shared since they're hardware-side, not protocol-specific (MK1 only for now)
+  - `Beo4KeysOnMK1.*` — MK1 only: recognizes Left/Right/Stop notify frames and drives the matching `KEY_PINS[]` output instead of a source reply (see [navigation key outputs](#schematic-navigation-key-outputs) below)
 
 ## How it works
 
-1. `MclBusReader` continuously decodes bus traffic and hands complete frames to `loop()`.
+1. `BusReader` continuously decodes bus traffic and hands complete frames to `loop()`.
 2. `MclData` parses each frame's header and, if it matches the Beolab 3500's short notify pattern, resolves which source was requested (`device = data + 192`, cross-checked against the full Beo4 command table — see source comments for how that formula was derived).
-3. Left/Right/Stop are intercepted here and just drive a `KEY_PINS[]` output (see [navigation key outputs](#schematic-navigation-key-outputs) above) instead of a source reply.
-4. `loop()` calls `writer.sendSource(device, track)` (see `common/MclBusWriter.cpp`), which replies with four frames, exactly as captured off a real Beocenter 2300: Sound, Sound, SelectSource, SelectSource for the requested device.
-5. One GPIO per audio source is also driven HIGH for whichever source is currently active (`GpioOutputs::setActiveSourcePin()`, called from `main.cpp` right after `writer.sendSource()`) — meant for a separate relay/routing board to pick up which physical audio input should be live, with no protocol knowledge needed on that side.
+3. `Beo4KeysOnMK1::handle()` intercepts Left/Right/Stop and drives a `KEY_PINS[]` output (see [navigation key outputs](#schematic-navigation-key-outputs) above) instead of a source reply.
+4. `loop()` calls `writer->sendSource(device, track)` (see `common/MclBusWriter.cpp`), which replies with a SelectSource frame for the requested device, as a real Beocenter 2300 would.
+5. One GPIO per audio source is also driven HIGH for whichever source is currently active (`GpioOutputs::setActiveSourcePin()`, called from `main.cpp` right after `writer->sendSource()`) — meant for a separate relay/routing board to pick up which physical audio input should be live, with no protocol knowledge needed on that side.
 
 
 ## License

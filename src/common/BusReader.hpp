@@ -22,9 +22,9 @@
 // timing/differential bit encoding on the wire for Mk1 and Mk2 (see
 // main.cpp). Only higher-layer frame *content*
 // differs between the two (see MclData.hpp).
-class MclBusReader {
+class BusReader {
 public:
-  explicit MclBusReader(gpio_num_t pin);
+  explicit BusReader(gpio_num_t pin);
 
   // configures the RMT RX channel and starts listening
   void begin();

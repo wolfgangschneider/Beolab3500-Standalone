@@ -112,8 +112,9 @@ String MclData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value) {
   return bits;
 }
 
-// Used as part of source setup/activation, see MclBusWriter::
-// sendSoundSetup(). 47 bits = Command(8) + Type(8) + gap1(6) +
+// Superseded by buildSoundSetupBits() below - kept only for A/B
+// comparison, not called from anywhere anymore. 47 bits =
+// Command(8) + Type(8) + gap1(6) +
 // SubType(8) + gap2(8) + Value(8) + trailing(1). gap1/gap2/trailing
 // reverse-engineered from a real capture (bytes 33 4E B0 0F 05, 40
 // bit) - which unit this was actually captured from (MK1? BW1/Beolink
@@ -125,7 +126,7 @@ String MclData::buildSoundBits(uint8_t type, uint8_t subType, uint8_t value) {
 // i.e. beyond the real 40-bit capture. Confirmed on real MK1 hardware
 // as part of the source-setup sequence.
 
-String MclData::buildSoundSetupBits(uint8_t type, uint8_t subType, uint8_t value) {
+String MclData::buildSoundSetupBits_old(uint8_t type, uint8_t subType, uint8_t value) {
   String bits;
   appendByte(bits, 51); // Command = Sound
   appendByte(bits, type);
@@ -144,7 +145,7 @@ String MclData::buildSoundSetupBits(uint8_t type, uint8_t subType, uint8_t value
 // real absolute volume, field2 = 2*Value+40 (the master's redundant
 // second volume encoding, verified across 7 captures). 2*value+40 fits a
 // byte for value up to 107 (real volume is <= ~90); it wraps past that.
-String MclData::buildSoundSetupBits2(uint8_t type, uint8_t subType, uint8_t value) {
+String MclData::buildSoundSetupBits(uint8_t type, uint8_t subType, uint8_t value) {
   String bits;
   appendByte(bits, 51); // Command = Sound
   appendByte(bits, type);
