@@ -4,7 +4,7 @@ namespace GpioOutputs {
 
  
   //
-  // Pin numbers are board-specific (#ifdef, matching src/main.cpp's
+  // Pin numbers are board-specific (#ifdef, matching src/main-standalone.cpp's
   // MCL_TX_PIN/MCL_RX_PIN/MK2_MUTE_PIN block) - they used to be one
   // fixed list (4,5,17,19) that happened to collide with the Stamp S3's
   // bus pins (GPIO5 = MK2_MUTE_PIN) and referenced GPIO17/19, which that

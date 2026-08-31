@@ -101,9 +101,9 @@ Pin 7 ─── Shield (GND)        ──────────────�
                     GPIO9  (External Force Mute) ◄──────────────────────────────────  external mute source (HIGH = mute)
 ```
 
-Pin numbers above are for `m5_stamp_S3` (the active `default_envs`); `esp32_wrover` uses different physical pins for the same circuit (GPIO34/25/26 for RX/TX/Mute - see the `#ifdef` block at the top of `src/main.cpp`).
+Pin numbers above are for `standalone_m5_stamp_S3` (the active `default_envs`); `standalone_esp32_wrover` uses different physical pins for the same circuit (GPIO34/25/26 for RX/TX/Mute - see the `#ifdef` block at the top of `src/main-standalone.cpp`).
 
-All named pins on `m5_stamp_S3`, and what each one does in MK1 vs MK2 (`blVersion` is now auto-detected at boot via `MK2_DETECTED`, not hand-set - see `src/main.cpp`'s `setup()`):
+All named pins on `standalone_m5_stamp_S3`, and what each one does in MK1 vs MK2 (`blVersion` is now auto-detected at boot via `MK2_DETECTED`, not hand-set - see `src/main-standalone.cpp`'s `setup()`):
 
 | Pin | MK1 | MK2 |
 |---|---|---|
@@ -123,7 +123,7 @@ GPIO5/9/43 are deliberately shared between an MK1-only and an MK2-only purpose -
 One GPIO per audio source (`SOURCE_PINS[]` in `src/common/GpioOutputs.cpp`), driven HIGH for whichever source is currently active and LOW for all others. A separate board reads these directly — no decoding needed on its side:
 
 ```
-ESP32 — m5_stamp_S3  ⚠️ work in progress, will change
+ESP32 — standalone_m5_stamp_S3  ⚠️ work in progress, will change
 ┌───────────────────────────┐
 │  GPIO44 (TV)      ●───────┼──► HIGH while TV is the active source
 │  GPIO43 (Radio)   ●───────┼──► HIGH while Radio is the active source
@@ -139,7 +139,7 @@ Pin numbers are placeholders and free to reassign - see `src/common/GpioOutputs.
 Same pattern as the per-source outputs above, but for the Left/Right/Stop keys (`KEY_PINS[]` in `src/common/GpioOutputs.cpp`, dispatched from `GpioOutputs::handleNavKeys()`), intercepted *before* the source-select mapping — Left(18)/Right(20) would otherwise collide with real device numbers once `+192` is applied (18+192=210=CD, 20+192=212=A.Tape2). Idea: drive a Bluetooth controller's Next/Prev/Pause. Not wired up yet, and unlike the sources, these three key values are only derived from the same `&0x1F` formula — not individually confirmed against real Beolab 3500 hardware:
 
 ```
-ESP32 - m5_stamp_S3 ⚠️ work in progress, will change
+ESP32 - standalone_m5_stamp_S3 ⚠️ work in progress, will change
 ┌───────────────────────────┐
 │  GPIO5  (Left)   ●────────┼──► HIGH while Left is pressed   (-> Bluetooth Prev?)
 │  GPIO7  (Right)  ●────────┼──► HIGH while Right is pressed  (-> Bluetooth Next?)
@@ -175,7 +175,7 @@ Simple, two things needed — tie **PL4** to **+5V**, and send `0011000111100111
 
 It gets more complicated — two additional requirements:
 1. After a frame's normal Stop (t4), one more t1 pulse (3.125ms) - applies to every MK2 command, not just the init sequence.
-2. Mute (`MK2_MUTE_PIN`, GPIO26 in `main.cpp`) must only go HIGH *after* that init sequence (`0011000111100111111100000000100`) has finished sending — it has to stay LOW for the whole duration of the sequence.
+2. Mute (`MK2_MUTE_PIN`, GPIO26 in `main-standalone.cpp`) must only go HIGH *after* that init sequence (`0011000111100111111100000000100`) has finished sending — it has to stay LOW for the whole duration of the sequence.
 
 ### Schematic (bus interface)
 see MK I
@@ -202,16 +202,21 @@ Pin 7 ─── Shield (GND)    ────────────────
 
 ## Project structure
 
+This repo actually holds two separate firmwares, picked per `platformio.ini` env via `build_src_filter` (only one `setup()`/`loop()` pair ever lands in a given build):
+
+- **Beolab3500-Standalone** (this section) — `src/main-standalone.cpp` + all of `src/common/`, envs `standalone_m5_stamp_S3`/`standalone_esp32_wrover`.
+- **[Beolab3500-PL2PL](#beolab3500-pl2pl)** — `src/main-pl2pl.cpp`, uses only a plain `common/BusWriter` (not `MclBusWriter`/`PlBusWriter`/`MclData`), env `pl2pl_m5_stamp_S3`.
+
 Both Beolab 3500 revisions share one bus implementation (confirmed identical wire protocol) and one entry point:
 
-- `src/main.cpp` — auto-detects MK1 vs MK2 via GPIO at boot and points a single `BusWriter *writer` at the matching subclass:
+- `src/main-standalone.cpp` — auto-detects MK1 vs MK2 via GPIO at boot and points a single `BusWriter *writer` at the matching subclass:
   - **MK1**: fully automatic — read an MCL/PL notify frame, filter for the Beolab 3500's request, reply, drive the active source pin.
   - **MK2**: no automatic flow (BL3500 Mk2 doesn't send anything of its own onto the bus — it's a passive speaker, all traffic originates from the real Master) — `setup()` sends a built power-on sequence once at boot (`writer->sendInit()`), and `SerialDebugCommands`'s Serial commands are otherwise the only way to send anything: `init` and `vol <value>` (MK2 only), plus the shared `<source name> [track]` command also used by MK1.
 - `src/common/`:
   - `BL3500Version.hpp` — the `MK1`/`MK2` enum, decided once at boot and used to pick the writer subclass and gate MK1-/MK2-only code
-  - `SerialDebugCommands.*` — the Serial command-line handler (`init`/`vol <value>`/`<source name> [track]`), polled from `main.cpp`'s `loop()`
+  - `SerialDebugCommands.*` — the Serial command-line handler (`init`/`vol <value>`/`<source name> [track]`), polled from `main-standalone.cpp`'s `loop()`
   - `BusReader.*` — RMT-based bus capture and pulse-to-bit decoding, shared by both revisions (MK1 only calls `begin()`/`poll()` on it - MK2 has nothing to read)
-  - `BusWriter.*` — base class: bit-to-pulse encoding/transmission (`begin`/`sendFrame`/`pulse`, identical for both revisions) plus the `sendSource`/`sendVol`/`sendInit` interface, implemented per revision by:
+  - `BusWriter.*` — base class: bit-to-pulse encoding/transmission (`begin`/`sendFrame`/`pulse`, identical for both revisions) plus the `sendSource`/`sendVol`/`sendInit` interface, virtual with harmless "not available" defaults (not pure virtual - keeps `BusWriter` itself concretely instantiable, which Beolab3500-PL2PL below relies on), implemented for real by:
     - `MclBusWriter.*` — MK1's real frame content
     - `PlBusWriter.*` — MK2's real frame content (including its extra trailing pulse - see [Beolab 3500 Mk II](#beolab-3500-mk-ii))
   - `MclData.*` — frame parsing/building (header fields, device mapping, Sound/SelectSource frame construction) — parsing is confirmed against MK1 only; the builders don't take a `BL3500Version` (each subclass above just calls them with different arguments)
@@ -223,7 +228,17 @@ Both Beolab 3500 revisions share one bus implementation (confirmed identical wir
 2. `MclData` parses each frame's header and, if it matches the Beolab 3500's short notify pattern, resolves which source was requested (`device = data + 192`, cross-checked against the full Beo4 command table — see source comments for how that formula was derived).
 3. `GpioOutputs::handleNavKeys()` intercepts Left/Right/Stop and drives a `KEY_PINS[]` output (see [navigation key outputs](#schematic-navigation-key-outputs) above) instead of a source reply.
 4. `loop()` calls `writer->sendSource(device, track)` (see `common/MclBusWriter.cpp`), which replies with a SelectSource frame for the requested device, as a real Beocenter 2300 would.
-5. One GPIO per audio source is also driven HIGH for whichever source is currently active (`GpioOutputs::setActiveSourcePin()`, called from `main.cpp` right after `writer->sendSource()`) — meant for a separate relay/routing board to pick up which physical audio input should be live, with no protocol knowledge needed on that side.
+5. One GPIO per audio source is also driven HIGH for whichever source is currently active (`GpioOutputs::setActiveSourcePin()`, called from `main-standalone.cpp` right after `writer->sendSource()`) — meant for a separate relay/routing board to pick up which physical audio input should be live, with no protocol knowledge needed on that side.
+
+
+## Beolab3500-PL2PL
+
+A second, much simpler firmware in this same repo (`src/main-pl2pl.cpp`, env `pl2pl_m5_stamp_S3`) — a minimal trigger board for a Beolab 3500 MKII on the B&O PL bus. No RX, no MK1 support, no other commands - just one job:
+
+- **GPIO5** (input, pulldown) - external trigger. On the LOW→HIGH edge, sends the init frame once (not repeated while held HIGH).
+- **GPIO1** (output) - drives the bus transistor, same electrical interface as Beolab3500-Standalone above (see [Schematic (bus interface)](#schematic-bus-interface)).
+
+Talks to a plain `common/BusWriter` directly (not `PlBusWriter`/`MclData` - it never does source selection or volume, so the real implementations and MclData dependency those pull in aren't needed) - just `begin()`, then `sendFrame()` + a trailing `pulse(1)` for the one fixed init frame. ESP32 only.
 
 
 ## License

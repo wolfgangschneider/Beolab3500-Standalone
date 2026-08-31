@@ -8,7 +8,7 @@
 // Master present (call poll() every loop() tick). Not part of MK1's
 // normal notify-driven flow; MK2 has no automatic flow at all, so
 // this is its only way to send anything besides the boot sequence in
-// main.cpp's setup(). Commands:
+// main-standalone.cpp's setup(). Commands:
 //   "init"        - calls writer->sendInit() (see MclBusWriter.cpp /
 //                    PlBusWriter.cpp for what each revision sends)
 //   "vol <value>" - calls writer->sendVol(value) (MK2 only feature -
@@ -19,7 +19,7 @@
 //     as if BL3500 had just requested it.
 class SerialDebugCommands {
 public:
-  // `writer`/`blVersion` are bound by reference to main.cpp's globals -
+  // `writer`/`blVersion` are bound by reference to main-standalone.cpp's globals -
   // `writer` itself is reassigned once, in setup(), after this is
   // constructed, so capturing it by value here would go stale.
   SerialDebugCommands(BusWriter *&writer, BL3500Version &blVersion, gpio_num_t mk2MutePin)

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Arduino.h>
-#include "MclData.hpp"
 
 // Transmits frames on the B&O MCL/PL "Datalink" bus by bit-banging
 // GPIO timing (see BusReader for the receive side). Per B&O MCL-2
@@ -17,16 +16,18 @@
 //   on both the bit and the previously sent bit (mirrors
 //   BusReader's decode).
 //
-// Base class for both Beolab 3500 revisions. main.cpp holds a single
-// `BusWriter *writer` chosen at startup to actually point at an
-// MclBusWriter or a PlBusWriter depending on blVersion - everything
+// Base class for both Beolab 3500 revisions. main-standalone.cpp holds
+// a single `BusWriter *writer` chosen at startup to actually point at
+// an MclBusWriter or a PlBusWriter depending on blVersion - everything
 // declared here is reachable through that one pointer either way.
 // begin()/sendFrame()/pulse() live ONLY here, not virtual, not
 // overridden anywhere - the low-level wire framing genuinely doesn't
-// differ between revisions. sendSource()/sendInit() are pure virtual
-// - both revisions' frame content differs enough now that no shared
-// default makes sense. sendVol() is virtual with a "not available"
-// default here, overridden only by PlBusWriter.
+// differ between revisions. sendSource()/sendVol()/sendInit() are
+// virtual with harmless "not available" defaults (not pure virtual -
+// on purpose: that keeps BusWriter itself concretely instantiable, so
+// Beolab3500-PL2PL can use it directly without pulling in MclBusWriter/
+// PlBusWriter/MclData just to get a compilable type - see
+// main-pl2pl.cpp, which never calls these three anyway).
 class BusWriter {
 public:
   explicit BusWriter(gpio_num_t pin);
@@ -39,30 +40,29 @@ public:
 
   // pulls the bus LOW for the fixed strobe width, then releases it
   // for the rest of the target timing symbol's period - public so
-  // main.cpp's debug commands can send one-off extra pulses directly
+  // main-standalone.cpp's debug commands can send one-off extra pulses directly
   void pulse(uint8_t tcode);
 
   // reply as Master would: SelectSource for the requested device -
   // without this BL3500 never activates the source. `track` is the
   // SelectSource frame's Value byte - a plain caller-supplied value,
-  // no internal counter. Pure virtual - see MclBusWriter.cpp /
-  // PlBusWriter.cpp for what each revision actually sends.
-  virtual void sendSource(uint8_t device, uint8_t track) = 0;
+  // no internal counter. See MclBusWriter.cpp / PlBusWriter.cpp for
+  // what each revision actually sends. Default here just logs "not
+  // available".
+  virtual void sendSource(uint8_t device, uint8_t track);
 
   // MK2 feature: Sound frame with Type=76, SubType=128 fixed - the
   // confirmed "volume" shape (see git history: gap2+Value together
   // form a single 16-bit counter, +1282 per real Vol+ press). `value`
-  // is the caller's actual parameter. Base implementation just logs
-  // "not available".
+  // is the caller's actual parameter. Default here just logs "not
+  // available".
   virtual void sendVol(uint8_t value);
 
   // Sends an activation sequence appropriate for the revision - see
-  // MclBusWriter.cpp (MK1: a Sound-setup frame + a default-device
-  // sendSource()) and PlBusWriter.cpp (MK2: the captured power-on
-  // frame) for what each actually does. Pure virtual - no revision-
-  // agnostic default makes sense here, every concrete writer must
-  // supply its own.
-  virtual void sendInit() = 0;
+  // MclBusWriter.cpp (MK1: just the Sound-setup frame) and
+  // PlBusWriter.cpp (MK2: the captured power-on frame) for what each
+  // actually does. Default here just logs "not available".
+  virtual void sendInit();
 
 protected:
   static constexpr uint32_t T1_US = 3125;

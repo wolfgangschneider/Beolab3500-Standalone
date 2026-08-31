@@ -20,7 +20,7 @@
 //
 // Shared by both Beolab 3500 revisions - confirmed identical t1..t5
 // timing/differential bit encoding on the wire for Mk1 and Mk2 (see
-// main.cpp). Only higher-layer frame *content*
+// main-standalone.cpp). Only higher-layer frame *content*
 // differs between the two (see MclData.hpp).
 class BusReader {
 public:

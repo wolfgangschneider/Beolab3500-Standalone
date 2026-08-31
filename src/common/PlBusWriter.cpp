@@ -1,4 +1,5 @@
 #include "PlBusWriter.hpp"
+#include "MclData.hpp"
 
 // confirmed on real MK2 hardware as-is
 void PlBusWriter::sendSource(uint8_t device, uint8_t track) {

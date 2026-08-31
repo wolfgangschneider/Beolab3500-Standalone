@@ -9,7 +9,7 @@
 // MclBusWriter.cpp); sendVol() just forwards to BusWriter's "not
 // available" default, since MK1 has no Vol feature. sendInit(value)
 // is an extra non-virtual overload, not currently called from
-// main.cpp.
+// main-standalone.cpp.
 class MclBusWriter : public BusWriter {
 public:
   explicit MclBusWriter(gpio_num_t pin) : BusWriter(pin) {}

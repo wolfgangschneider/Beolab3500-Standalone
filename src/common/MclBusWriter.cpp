@@ -1,4 +1,5 @@
 #include "MclBusWriter.hpp"
+#include "MclData.hpp"
 
 // confirmed on real MK1 hardware as-is
 void MclBusWriter::sendSource(uint8_t device, uint8_t track) {

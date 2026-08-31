@@ -23,7 +23,7 @@ extern const size_t SOURCE_PIN_COUNT;
 // on MK2 these pins are never configured as outputs (and some, like
 // GPIO43 on m5_stamp_S3, double as MK2_DETECTED - driving them would
 // be wrong there), so callers must gate setActiveSourcePin() on
-// blVersion==MK1 themselves (see main.cpp's loop() and
+// blVersion==MK1 themselves (see main-standalone.cpp's loop() and
 // SerialDebugCommands).
 void beginSourcePins();
 void setActiveSourcePin(int device);
@@ -31,7 +31,7 @@ void setActiveSourcePin(int device);
 // One GPIO per navigation key (Left/Right/Stop). Same fixed values for
 // both esp32_wrover and m5_stamp_S3 (no per-board #ifdef needed, both
 // boards have these free). On m5_stamp_S3 only, LEFT/STOP happen to
-// land on the same pins as main.cpp's MK2_MUTE_PIN(5)/MK2_BL_MUTE_PIN(9)
+// land on the same pins as main-standalone.cpp's MK2_MUTE_PIN(5)/MK2_BL_MUTE_PIN(9)
 // - safe because loop()'s mute-mirror code is gated to blVersion==MK2
 // only, while beginKeyPins()/pressKey() only ever run when
 // blVersion==MK1, so the two purposes never touch the pin in the same

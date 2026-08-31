@@ -2,7 +2,7 @@
 
 // Which Beolab 3500 hardware revision this build is running as -
 // confirmed identical wire protocol between the two (see
-// BusReader.hpp), differing only in frame content. main.cpp holds the
+// BusReader.hpp), differing only in frame content. main-standalone.cpp holds the
 // one `blVersion` instance, auto-detected via GPIO in setup(), and
 // uses it to pick between MclBusWriter/PlBusWriter and to gate MK1-
 // vs MK2-only code paths. MclData's frame builders don't take this
