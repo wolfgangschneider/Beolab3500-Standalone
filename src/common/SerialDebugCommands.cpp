@@ -1,6 +1,5 @@
 #include "SerialDebugCommands.hpp"
 #include "MclData.hpp"
-#include "GpioOutputs.hpp"
 
 void SerialDebugCommands::poll() {
   while (Serial.available()) {
@@ -49,9 +48,6 @@ void SerialDebugCommands::poll() {
     if (device < 0 && nameToken.toInt() >= 192) device = nameToken.toInt();
     if (device >= 0) {
       _writer->sendSource((uint8_t) device, (uint8_t) track);
-      if (_blVersion == BL3500Version::MK1) {
-        GpioOutputs::setActiveSourcePin((uint8_t) device);
-      }
       continue;
     }
 

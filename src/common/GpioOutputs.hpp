@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include "MclData.hpp"
 
 // GPIO outputs shared by both Beolab 3500 revisions (confirmed identical
 // wire protocol, see common/BusReader.hpp) - drives a separate, not-yet-built downstream board
@@ -18,7 +19,12 @@ struct SourcePin { int device; gpio_num_t pin; };
 extern const SourcePin SOURCE_PINS[];
 extern const size_t SOURCE_PIN_COUNT;
 
-// pinMode(OUTPUT) + idle LOW for every entry in SOURCE_PINS
+// pinMode(OUTPUT) + idle LOW for every entry in SOURCE_PINS. MK1 only -
+// on MK2 these pins are never configured as outputs (and some, like
+// GPIO43 on m5_stamp_S3, double as MK2_DETECTED - driving them would
+// be wrong there), so callers must gate setActiveSourcePin() on
+// blVersion==MK1 themselves (see main.cpp's loop() and
+// SerialDebugCommands).
 void beginSourcePins();
 void setActiveSourcePin(int device);
 
@@ -59,5 +65,13 @@ void beginKeyPins();
 // back to floating first (in case one was ever left stuck as an
 // output).
 void pressKey(gpio_num_t pin);
+
+// MK1 only: BL3500's own remote sends Left/Right/Stop as short notify
+// frames too (same shape as a source-select notify) - recognizes them
+// by frame.addrFrom + frame.data and drives the matching KEY_PINS[]
+// pin via pressKey() above instead of the usual source-select reply.
+// Returns true if it was a nav key and has been handled (so the
+// caller should skip its normal reply for this frame).
+bool handleNavKeys(const MclData &frame);
 
 }

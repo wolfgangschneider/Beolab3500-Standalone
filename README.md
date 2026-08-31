@@ -136,7 +136,7 @@ Pin numbers are placeholders and free to reassign - see `src/common/GpioOutputs.
 
 ### Schematic (navigation key outputs) could be used for Bluetooth navigation
 
-Same pattern as the per-source outputs above, but for the Left/Right/Stop keys (`KEY_PINS[]` in `src/common/GpioOutputs.cpp`, dispatched from `Beo4KeysOnMK1::handle()`), intercepted *before* the source-select mapping — Left(18)/Right(20) would otherwise collide with real device numbers once `+192` is applied (18+192=210=CD, 20+192=212=A.Tape2). Idea: drive a Bluetooth controller's Next/Prev/Pause. Not wired up yet, and unlike the sources, these three key values are only derived from the same `&0x1F` formula — not individually confirmed against real Beolab 3500 hardware:
+Same pattern as the per-source outputs above, but for the Left/Right/Stop keys (`KEY_PINS[]` in `src/common/GpioOutputs.cpp`, dispatched from `GpioOutputs::handleNavKeys()`), intercepted *before* the source-select mapping — Left(18)/Right(20) would otherwise collide with real device numbers once `+192` is applied (18+192=210=CD, 20+192=212=A.Tape2). Idea: drive a Bluetooth controller's Next/Prev/Pause. Not wired up yet, and unlike the sources, these three key values are only derived from the same `&0x1F` formula — not individually confirmed against real Beolab 3500 hardware:
 
 ```
 ESP32 - m5_stamp_S3 ⚠️ work in progress, will change
@@ -215,14 +215,13 @@ Both Beolab 3500 revisions share one bus implementation (confirmed identical wir
     - `MclBusWriter.*` — MK1's real frame content
     - `PlBusWriter.*` — MK2's real frame content (including its extra trailing pulse - see [Beolab 3500 Mk II](#beolab-3500-mk-ii))
   - `MclData.*` — frame parsing/building (header fields, device mapping, Sound/SelectSource frame construction) — parsing is confirmed against MK1 only; the builders don't take a `BL3500Version` (each subclass above just calls them with different arguments)
-  - `GpioOutputs.*` — the downstream per-source and navigation-key GPIO outputs, shared since they're hardware-side, not protocol-specific (MK1 only for now)
-  - `Beo4KeysOnMK1.*` — MK1 only: recognizes Left/Right/Stop notify frames and drives the matching `KEY_PINS[]` output instead of a source reply (see [navigation key outputs](#schematic-navigation-key-outputs) below)
+  - `GpioOutputs.*` — the downstream per-source and navigation-key GPIO outputs, shared since they're hardware-side, not protocol-specific (MK1 only for now). `handleNavKeys()` recognizes Left/Right/Stop notify frames and drives the matching `KEY_PINS[]` output instead of a source reply (see [navigation key outputs](#schematic-navigation-key-outputs) below)
 
 ## How it works
 
 1. `BusReader` continuously decodes bus traffic and hands complete frames to `loop()`.
 2. `MclData` parses each frame's header and, if it matches the Beolab 3500's short notify pattern, resolves which source was requested (`device = data + 192`, cross-checked against the full Beo4 command table — see source comments for how that formula was derived).
-3. `Beo4KeysOnMK1::handle()` intercepts Left/Right/Stop and drives a `KEY_PINS[]` output (see [navigation key outputs](#schematic-navigation-key-outputs) above) instead of a source reply.
+3. `GpioOutputs::handleNavKeys()` intercepts Left/Right/Stop and drives a `KEY_PINS[]` output (see [navigation key outputs](#schematic-navigation-key-outputs) above) instead of a source reply.
 4. `loop()` calls `writer->sendSource(device, track)` (see `common/MclBusWriter.cpp`), which replies with a SelectSource frame for the requested device, as a real Beocenter 2300 would.
 5. One GPIO per audio source is also driven HIGH for whichever source is currently active (`GpioOutputs::setActiveSourcePin()`, called from `main.cpp` right after `writer->sendSource()`) — meant for a separate relay/routing board to pick up which physical audio input should be live, with no protocol knowledge needed on that side.
 

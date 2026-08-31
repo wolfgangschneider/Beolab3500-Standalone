@@ -55,7 +55,6 @@
 #include "common/MclData.hpp"
 #include "common/GpioOutputs.hpp"
 #include "common/SerialDebugCommands.hpp"
-#include "common/Beo4KeysOnMK1.hpp"
 
 // set this to match the board you're about to flash - see file header
 static BL3500Version blVersion = BL3500Version::MK1;
@@ -190,10 +189,9 @@ void loop() {
   if (frame.data.length() >= 8) return;
 
   // 5. Left/Right/Stop switch a GPIO instead of a source reply - see
-  //    Beo4KeysOnMK1.cpp for why this needs the addrFrom check too
-  //    (not just the key value).
-  uint32_t key = MclData::bitsToValue(frame.data);
-  if (Beo4KeysOnMK1::handle(frame.addrFrom, key)) return;
+  //    GpioOutputs::handleNavKeys() for why this needs the addrFrom
+  //    check too (not just the key value).
+  if (GpioOutputs::handleNavKeys(frame)) return;
 
   // 6. everything else must be BL3500's own source-select notify
   //    (addrFrom=12) with a Beo4 key code (& 0x1F) already mapped to a
