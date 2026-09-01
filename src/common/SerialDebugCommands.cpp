@@ -18,14 +18,20 @@ void SerialDebugCommands::poll() {
     lower.toLowerCase();
 
     if (lower == "init") {
+     
       digitalWrite(_mk2MutePin, LOW); // ensure mute is off during the init sequence when display is needed
       _writer->sendInit();
       digitalWrite(_mk2MutePin, HIGH); // ensure mute is off after the init sequence
       continue;
     }
 
-    int volValue;
-    if (sscanf(line.c_str(), "vol %d", &volValue) == 1) {
+    // requires a literal space ("vol5" is not "vol 5") - consistent
+    // with the source-name dispatch below, which also needs a space to
+    // split a name from its track (some names, e.g. "cd2"/"a.tape2",
+    // already end in a digit, so "cd25" alone couldn't be split
+    // unambiguously into name+track).
+    if (lower.startsWith("vol ")) {
+      int volValue = line.substring(4).toInt();
       Serial.printf("-> debug Vol frame: value=%d\n", volValue);
       _writer->sendVol((uint8_t) volValue);
       continue;

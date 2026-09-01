@@ -5,7 +5,7 @@
 void PlBusWriter::sendSource(uint8_t device, uint8_t track) {
   String select = MclData::buildSelectSourceBits(device, 96, 0x00, track);
   sendFrame(select);
-  //pulse(1); // required not confirmed
+  pulse(1); // MKII trailing pulse - confirmed required
 }
 
 // MK2 only, see BusWriter.hpp. Sound frame with Type=76, SubType=128

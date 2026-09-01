@@ -134,15 +134,15 @@ void setup() {
   // reader.begin() intentionally not called: MK2 has nothing to react
   // to and no decode path in loop() to drain it (see file header).
 
-  // Mute LOW during init is only needed for the display to update
-  // correctly - not done here (mute just goes HIGH once, before
-  // sendInit()); loop()'s mute-mirror takes over afterwards anyway.
   pinMode(MK2_MUTE_PIN, OUTPUT);
-
   pinMode(MK2_BL_MUTE_PIN, INPUT_PULLDOWN);
 
-  digitalWrite(MK2_MUTE_PIN, HIGH);
+  // Mute LOW during init is only needed for the display to update
+  // correctly - has to stay LOW for the whole duration of sendInit(),
+  // then HIGH; loop()'s mute-mirror takes over afterwards anyway.
+  digitalWrite(MK2_MUTE_PIN, LOW);
   writer->sendInit();
+  digitalWrite(MK2_MUTE_PIN, HIGH);
 }
 
 void loop() {
@@ -157,8 +157,8 @@ void loop() {
     // STOP (see GpioOutputs.hpp) - safe since MK1 and MK2 code never
     // run in the same boot.
     bool mk2Mute = digitalRead(MK2_BL_MUTE_PIN) == HIGH;
-    digitalWrite(MK2_MUTE_PIN, !mk2Mute); // mirror the external (BL) mute signal to the MK2's own mute pin
-   // Serial.printf("loop() tick: MK2_BL_MUTE_PIN=%d -> MK2_MUTE_PIN=%d\n", mk2Mute, !mk2Mute);
+     digitalWrite(MK2_MUTE_PIN, !mk2Mute); // mirror the external (BL) mute signal to the MK2's own mute pin
+    //Serial.printf("loop() tick: MK2_BL_MUTE_PIN=%d -> MK2_MUTE_PIN=%d\n", mk2Mute, !mk2Mute);
     return; // no automatic flow yet - debugCommands.poll() is the only TX trigger
   }
 
