@@ -251,5 +251,4 @@ A second, much simpler firmware in this same repo (`src/main-pl2pl.cpp`, env `pl
 
   ## Related
 
-- [`aanban/esp32_beo4`](https://github.com/aanban/esp32_beo4) — Beo4 IR remote library (used here for the confirmed `BEO_CMD_*` command table)
 - A sister project, `BeoPowerlinkDisplay`, provided an independent second bus reader used throughout development to confirm signal issues were real and not specific to the Beolab 3500
