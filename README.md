@@ -2,6 +2,11 @@
 
 An ESP32 firmware that lets a Bang & Olufsen **Beolab 3500** satellite speaker activate a source without its real Master unit present. Unlike the Menu-0-0-4 trick, this stays permanent even after a power loss — and on Mk I it also gives more possibilities, like selecting different sources.
 
+This repo actually covers two different use cases with two separate firmwares (see [Project structure](#project-structure)):
+
+- **[Beolab3500-Standalone](#beolab-3500-mki)** (**Mk I and Mk II**) — no real B&O Master at all. Keeps the Beolab 3500 permanently activated so you can feed it your own audio source instead (e.g. Bluetooth, via an external audio switch on the per-source select outputs) - the speaker thinks a Master is present and stays on.
+- **[Beolab3500-PL2PL](#beolab3500-pl2pl)** (**Mk II only**) — turns a Beolab 3500 MKII into a normal PL speaker for a TV center or other B&O source that has no Masterlink of its own - just sends the one-time init trigger so the speaker works at all, no ongoing Master traffic needed.
+
 ## Switching to PL/MCL mode
 
 Before this project can talk to a Beolab 3500, the speaker itself has to be switched into PL/MCL bus mode via its own menu:
@@ -237,8 +242,6 @@ A second, much simpler firmware in this same repo (`src/main-pl2pl.cpp`, env `pl
 
 - **GPIO5** (input, pulldown) - external trigger. On the LOW→HIGH edge, sends the init frame once (not repeated while held HIGH).
 - **GPIO1** (output) - drives the bus transistor, same electrical interface as Beolab3500-Standalone above (see [Schematic (bus interface)](#schematic-bus-interface)).
-
-Talks to a plain `common/BusWriter` directly (not `PlBusWriter`/`MclData` - it never does source selection or volume, so the real implementations and MclData dependency those pull in aren't needed) - just `begin()`, then `sendFrame()` + a trailing `pulse(1)` for the one fixed init frame. ESP32 only.
 
 
 ## License
