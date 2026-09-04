@@ -46,16 +46,25 @@ void BusReader::begin() {
   rxChanCfg.resolution_hz     = 1000000u; // 1MHz -> 1us resolution
   // On-chip RMT channel memory block, NOT the software receive buffer
   // (that's _rawSymbols/RAW_SYMBOLS_MAX below, plain RAM, unrelated).
-  // Must be small enough to fit in one HW channel's block - 512 (a
-  // leftover copy-paste of RAW_SYMBOLS_MAX) happened to fit on the
-  // original ESP32's larger/shared RMT memory, but exceeds what a
-  // single RX channel can ever get on the ESP32-S3 (only 4 RX channels
-  // total, much less combined memory), so rmt_new_rx_channel() failed
-  // there with "no free rx channels" on every boot. 64 is the safe
-  // default block size supported across ESP32 variants; rmt_receive()
-  // still captures a full frame into the much larger _rawSymbols[]
-  // regardless of this value.
+  // Board-specific: the original ESP32 (WROVER) has 512 words shared
+  // across 8 RMT channels, and this project only ever allocates the
+  // one RX channel here (TX is plain bit-banged GPIO, not RMT), so the
+  // full 512 fits with room to spare - needed, since 64 was too small
+  // to hold a whole frame (Start+AGC+data+Stop, sometimes two frames
+  // in one capture via our own TX echo) and the driver logged "hw
+  // buffer too small, received symbols truncated" there. The ESP32-S3
+  // only has 4 RX channels total with much less combined memory, so
+  // 512 there made rmt_new_rx_channel() fail with "no free rx
+  // channels" on every boot - 64 is the safe size that still fits.
+  // Either way rmt_receive() copies into the much larger _rawSymbols[]
+  // as capture progresses, so this value doesn't cap frame length -
+  // only how much of a burst can be captured before the driver's
+  // internal copy catches up.
+#if defined(BOARD_M5STAMP_S3)
   rxChanCfg.mem_block_symbols = 64;
+#else // BOARD_WROOVER
+  rxChanCfg.mem_block_symbols = RAW_SYMBOLS_MAX;
+#endif
   rxChanCfg.flags.invert_in   = false;
   rxChanCfg.flags.with_dma    = false;
   ESP_ERROR_CHECK(rmt_new_rx_channel(&rxChanCfg, &_rxChan));
