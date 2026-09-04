@@ -157,6 +157,13 @@ String MclData::buildSoundSetupBits(uint8_t type, uint8_t subType, uint8_t value
   return bits;
 }
 
+// POC (UNVERIFIED). See MclData.hpp. Reuses buildSelectSourceBits() so
+// the frame is exactly as long as what sendSource() puts on the bus:
+// Device carries the Beo4 source, Value carries the Beo4 command.
+String MclData::buildBeo4CommandBits(uint8_t command, uint8_t source) {
+  return buildSelectSourceBits(source, 96, 0x00, command);
+}
+
 void MclData::appendByte(String &bits, uint8_t v) {
   for (int b = 7; b >= 0; b--) bits += ((v >> b) & 1) ? '1' : '0';
 }

@@ -11,6 +11,10 @@
 // main-standalone.cpp's setup(). Commands:
 //   "init"        - calls writer->sendInit() (see MclBusWriter.cpp /
 //                    PlBusWriter.cpp for what each revision sends)
+//   "standby" / "alloff" / "allstandby" - POC, UNVERIFIED: sends a
+//                    Beo4 ALL(0x0F)+STANDBY(0x0C) command frame (see
+//                    MclData::buildBeo4CommandBits). Revert the POC
+//                    commit if real hardware ignores it.
 //   "vol <value>" - calls writer->sendVol(value) (MK2 only feature -
 //                    MK1's writer just logs "not available")
 //   "<source name>" (e.g. "radio", "cd", "tv", ...) or a bare device

@@ -17,11 +17,25 @@ void SerialDebugCommands::poll() {
     String lower = line;
     lower.toLowerCase();
 
+    // POC (UNVERIFIED - no captured reference frame): "ALL STANDBY".
+    // Beo4 ALL(0x0F) source + STANDBY(0x0C) command, sent as a full
+    // SelectSource-length frame (see MclData::buildBeo4CommandBits),
+    // plus the same trailing pulse the other Pl frames use. If real
+    // hardware ignores this, revert the POC commit - nothing else
+    // depends on it.
+    if (lower == "standby" || lower == "alloff" || lower == "allstandby") {
+      const uint8_t cmd = 0x0C, src = 0x00;
+      _writer->sendFrame(MclData::buildBeo4CommandBits(cmd, src));
+      _writer->pulse(1);
+      Serial.printf("-> debug ALL STANDBY frame: cmd=0x%02X src=0x%02X\n", cmd, src); // log only after TX - no I/O during timed send
+      continue;
+    }
+
     if (lower == "init") {
-     
       digitalWrite(_mk2MutePin, LOW); // ensure mute is off during the init sequence when display is needed
       _writer->sendInit();
       digitalWrite(_mk2MutePin, HIGH); // ensure mute is off after the init sequence
+      Serial.println("-> debug Init sequence"); // log only after TX - no I/O during timed send
       continue;
     }
 
@@ -32,8 +46,8 @@ void SerialDebugCommands::poll() {
     // unambiguously into name+track).
     if (lower.startsWith("vol ")) {
       int volValue = line.substring(4).toInt();
-      Serial.printf("-> debug Vol frame: value=%d\n", volValue);
       _writer->sendVol((uint8_t) volValue);
+      Serial.printf("-> debug Vol frame: value=%d\n", volValue); // log only after TX - no I/O during timed send
       continue;
     }
 
@@ -54,6 +68,8 @@ void SerialDebugCommands::poll() {
     if (device < 0 && nameToken.toInt() >= 192) device = nameToken.toInt();
     if (device >= 0) {
       _writer->sendSource((uint8_t) device, (uint8_t) track);
+      Serial.printf("-> debug SelectSource frame: device=%d (%s) track=%d\n",
+                    device, MclData::deviceName((uint8_t) device), track); // log only after TX - no I/O during timed send
       continue;
     }
 

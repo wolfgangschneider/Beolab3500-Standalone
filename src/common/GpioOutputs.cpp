@@ -32,16 +32,16 @@ const SourcePin SOURCE_PINS[] = {
 };
 #else // BOARD_WROOVER
 const SourcePin SOURCE_PINS[] = {
-  {192, GPIO_NUM_4},  // TV
-  {193, GPIO_NUM_5},  // Radio
+  {192, GPIO_NUM_33},  // TV
+  {193, GPIO_NUM_34},  // Radio
  // {194, GPIO_NUM_12}, // V.Aux
  // {195, GPIO_NUM_13}, // A.Aux
  // {197, GPIO_NUM_14}, // V.Tape
  // {198, GPIO_NUM_15}, // DVD
  // {202, GPIO_NUM_16}, // Sat
-  {203, GPIO_NUM_17}, // PC
+ // {203, GPIO_NUM_17}, // PC
  // {209, GPIO_NUM_18}, // A.Tape
-  {210, GPIO_NUM_19}, // CD
+ // {210, GPIO_NUM_19}, // CD
  // {211, GPIO_NUM_22}, // Phono
  // {212, GPIO_NUM_23}, // A.Tape2
  // {215, GPIO_NUM_27}, // CD2

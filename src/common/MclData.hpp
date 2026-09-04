@@ -124,6 +124,16 @@ public:
   // kept unchanged for A/B comparison and rollback.
   static String buildSoundSetupBits(uint8_t type, uint8_t subType, uint8_t value);
 
+  // POC (UNVERIFIED - no capture to check against): Beo4 command as a
+  // full SelectSource-shaped frame, i.e. the exact same length/layout
+  // buildSelectSourceBits() / sendSource() emit -
+  //   Command(8)=59 | Device(8)=source | ValueType(8)=96 | Seek(8)=0 |
+  //   Value(8)=command | Byte6(8)=0
+  // For "ALL STANDBY": source=BEO_SRC_ALL(0x0F), command=BEO_CMD_STANDBY(0x0C).
+  // Sent by the "standby" debug command on MK2. Revert the whole POC
+  // commit if real hardware ignores it.
+  static String buildBeo4CommandBits(uint8_t command, uint8_t source);
+
   // converts a bit string ("1011...") to its unsigned value, MSB first
   static uint32_t bitsToValue(const String &s);
 
