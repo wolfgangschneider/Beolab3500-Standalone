@@ -81,7 +81,7 @@ void pressKey(gpio_num_t pin) {
     if (KEY_PINS[i] != pin) pinMode(KEY_PINS[i], INPUT);
   }
   pinMode(pin, OUTPUT);
-  digitalWrite(pin, LOW);
+  digitalWrite(pin, HIGH);
   delay(100);
   pinMode(pin, INPUT);
 }
