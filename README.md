@@ -53,13 +53,13 @@ The Beolink MCL cable carries more than just the bus — this project only taps 
 ```
 Pin 1 ─── Yellow (L hot)      ─────────────────────────► Audio jack L, tip
 
-Pin 4 ─── Green  (R hot)      ─────────────────────────► Audio jack R, tip
+Pin 4 ─── Green  (R hot)      ─────────────────────────► Audio jack R, ring
 
-                                                   ┌───► Audio jack L+R, sleeve
-Pin 3 ─── Grey   (L gnd)     ──┐                   │
-                               ├───────────────────┤
-Pin 5 ─── Brown  (R gnd)     ──┘                   │
-                                                   └───► ESP32 GND
+                                                   
+Pin 3 ─── Grey   (L gnd)     ──┐                   
+                               ├──────────────────────► Audio jack L+R, sleeve
+Pin 5 ─── Brown  (R gnd)     ──┘                   
+                                                   
 
 Pin 2 ─── Pink   (DC 7.5–8.5V) ────────────────────────► not used
 
@@ -190,11 +190,11 @@ The Beolink MCL cable carries more than just the bus — this project only taps 
 
 Pin 1 ─── Greay  (power)   ─────────────────────────► not used
 
-Pin 2 ─── Blue  (GND)     ─────────────────────────► Audio jack GND, tip
+Pin 2 ─── Blue  (GND)     ─────────────────────────► Audio jack GND, shelfe
 
-Pin 3 ─── Braun   (Left)  ─────────────────────────► Audio jack Left, tip
+Pin 3 ─── Braun   (Left)  ─────────────────────────► Audio jack Left, ring
                                
-Pin 4 ─── Yellow  (Mute)  ─────────────────────────► See Schematic (bus interface)                │
+Pin 4 ─── Yellow  (Mute)  ─────────────────────────► See Schematic                 │
 
 Pin 5 ─── Green   (right) ─────────────────────────► Audio jack Left, tip
 
