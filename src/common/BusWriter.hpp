@@ -41,6 +41,10 @@ public:
   // sends bits ("1011...") framed as AGC + Start + data + Stop
   void sendFrame(const String &bits);
 
+  // true (once) if `bits` is one of our own recently sent frames coming
+  // back over the shared bus wire - lets RX tell echo from real traffic
+  bool consumeEcho(const String &bits);
+
   // pulls the bus LOW for the fixed strobe width, then releases it
   // for the rest of the target timing symbol's period - public so
   // main-standalone.cpp's debug commands can send one-off extra pulses directly
@@ -67,6 +71,12 @@ public:
   // actually does. Default here just logs "not available".
   virtual void sendInit();
 
+  // Switches the system off (debug "off" command). Sequence differs per
+  // writer - see MclBusWriter.cpp (MCL: verified on real hardware) and
+  // PlBusWriter.cpp / MclBusWriter PL variant (UNTESTED). Default here just
+  // logs "not available".
+  virtual void sendOff();
+
   // Same as sendInit(), but with an explicit test value instead of the
   // revision's usual hardcoded one - lets the debug "init <value>"
   // Serial command probe other values. Default here just logs "not
@@ -82,6 +92,12 @@ protected:
   static constexpr uint32_t STROBE_LOW_US = 1562;
 
   gpio_num_t _pin;
+
+  // last few sent frames (ring), for consumeEcho()
+  static constexpr int ECHO_SLOTS = 6;
+  String   _txBits[ECHO_SLOTS];
+  uint32_t _txMs[ECHO_SLOTS] = {0};
+  uint8_t  _txIdx = 0;
 
   // which timing symbol encodes `bit` given the previous bit
   static uint8_t encodeBit(int lastBit, int bit);

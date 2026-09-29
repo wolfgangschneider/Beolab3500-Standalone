@@ -33,6 +33,7 @@ public:
   void sendSource(uint8_t device, uint8_t track) override;
 
   void sendVol(uint8_t value) override;
+  void sendOff() override;
   void sendInit() override;
   void sendInit(uint8_t value) override;
 

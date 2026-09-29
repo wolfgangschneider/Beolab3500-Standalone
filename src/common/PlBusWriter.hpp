@@ -18,4 +18,5 @@ public:
   void sendSource(uint8_t device, uint8_t track) override;
   void sendVol(uint8_t value) override;
   void sendInit() override;
+  void sendOff() override; // UNTESTED
 };

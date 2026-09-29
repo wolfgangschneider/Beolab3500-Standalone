@@ -36,6 +36,9 @@ public:
 
   void poll();
 
+  // lists all Serial commands ("?" / "help"); also usable from setup()
+  static void printHelp();
+
 private:
   BusWriter *&_writer;
   BL3500Version &_blVersion;

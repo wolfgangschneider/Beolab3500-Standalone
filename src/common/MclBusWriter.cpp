@@ -51,6 +51,36 @@ void MclBusWriter::sendSource(uint8_t device, uint8_t track) {
   Serial.printf("   -> %s sends: source %s, track %d\n", used, MclData::deviceName(device), track);
 }
 
+// OFF - the real MCL Master's switch-off sequence (sniffed live from a
+// BM4500): a VOLUME SelectSource frame, then channel/track with Seek=2
+// Value=0, sent as a pair TWICE (once is not enough - only mutes).
+// Fixed volume 90 (seek = 2*90+40), device Radio(193) like the capture.
+// VERIFIED on real hardware for the MCL variant.
+// The PL variant sends the single frame sniffed from a real PL Master
+// instead (see below) - UNTESTED as TX.
+void MclBusWriter::sendOff() {
+  constexpr uint8_t device = 193;
+
+  if (_variant == MclMasterVariant::MCL) {
+    // verified on real hardware
+    sendFrame(MclData::buildSelectSourceBits40(device, 72, 2 * VOLUME_VALUE + 40, VOLUME_VALUE));
+    sendFrame(MclData::buildSelectSourceBits40(device, 64, 2, 0));
+    sendFrame(MclData::buildSelectSourceBits40(device, 72, 2 * VOLUME_VALUE + 40, VOLUME_VALUE));
+    sendFrame(MclData::buildSelectSourceBits40(device, 64, 2, 0));
+    Serial.printf("   -> %s sends: OFF sequence\n", name());
+  }
+  else if (_variant == MclMasterVariant::PL) {
+    // the real PL Master's off, sniffed live 2026-09: a SINGLE 48-bit
+    // SelectSource frame  3B C1 60 02 00 00  = Radio, ValueType 96
+    // (activate), Seek=2, Value=0. UNTESTED as TX.
+    sendFrame(MclData::buildSelectSourceBits(device, 96, 2, 0));
+    Serial.printf("   -> %s sends: OFF (activate seek=2 value=0) (UNTESTED)\n", name());
+  }
+  else {
+    Serial.printf("   -> %s: no OFF sequence for this variant\n", name());
+  }
+}
+
 // MK1 has no Vol feature - same "not available" as the base
 void MclBusWriter::sendVol(uint8_t value) {
   BusWriter::sendVol(value);

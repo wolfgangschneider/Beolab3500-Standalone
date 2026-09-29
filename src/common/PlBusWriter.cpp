@@ -18,6 +18,20 @@ void PlBusWriter::sendVol(uint8_t value) {
   Serial.printf("   -> PL sends: volume %d\n", value);
 }
 
+// OFF - UNTESTED on MK2. Guess: the frames of the (verified) MCL switch-off
+// sequence (see MclBusWriter::sendOff), plus the trailing pulse every MK2
+// frame type needs. No real Beolink Wireless off capture exists yet.
+void PlBusWriter::sendOff() {
+  constexpr uint8_t device = 193;
+  constexpr int vol = 90;
+  for (int i = 0; i < 2; i++) {
+    sendFrame(MclData::buildSelectSourceBits40(device, 72, 2 * vol + 40, vol));
+    sendFrame(MclData::buildSelectSourceBits40(device, 64, 2, 0));
+  }
+  pulse(1); // MKII trailing pulse
+  Serial.println("   -> PL sends: OFF sequence (UNTESTED)");
+}
+
 // Replays (part of) the captured power-on sequence (captured off
 // Beolink Wireless BL). Currently sends just the first frame
 // (Command=49, unrecognized, no known build formula - literal

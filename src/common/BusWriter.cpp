@@ -31,6 +31,22 @@ void BusWriter::sendFrame(const String &bits) {
     lastBit = bit;
   }
   pulse(4); // Stop
+
+  // remember for echo detection (after the last pulse - nothing timed left)
+  _txBits[_txIdx] = bits;
+  _txMs[_txIdx] = millis();
+  _txIdx = (_txIdx + 1) % ECHO_SLOTS;
+}
+
+bool BusWriter::consumeEcho(const String &bits) {
+  const uint32_t now = millis();
+  for (int i = 0; i < ECHO_SLOTS; i++) {
+    if (_txMs[i] && now - _txMs[i] < 1500 && _txBits[i] == bits) {
+      _txMs[i] = 0; // each sent frame explains exactly one echo
+      return true;
+    }
+  }
+  return false;
 }
 
 void BusWriter::sendSource(uint8_t device, uint8_t track) {
@@ -43,6 +59,10 @@ void BusWriter::sendVol(uint8_t value) {
 
 void BusWriter::sendInit() {
   Serial.println("   -> sendInit() not available on this writer");
+}
+
+void BusWriter::sendOff() {
+  Serial.println("   -> sendOff() not available on this writer");
 }
 
 void BusWriter::sendInit(uint8_t value) {

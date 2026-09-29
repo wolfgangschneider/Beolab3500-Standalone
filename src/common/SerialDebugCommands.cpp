@@ -1,5 +1,6 @@
 #include "SerialDebugCommands.hpp"
 #include "MclData.hpp"
+#include "BusSniff.hpp"
 
 // TEMP QCC-AT - forward "AT..." lines to a QCC5124 on UART1. Compiled
 // out automatically if src/common/QccAtBridge.hpp is deleted.
@@ -8,6 +9,23 @@
 #include "QccAtBridge.hpp"
 #define QCC_AT_BRIDGE_PRESENT 1
 #endif
+
+void SerialDebugCommands::printHelp() {
+  Serial.println("Commands:");
+  Serial.println("  <source> [track]  select a source, e.g. \"cd 6\", \"radio\"");
+  Serial.println("                    sources: tv radio v.aux a.aux v.tape dvd sat pc a.tape cd phono a.tape2 cd2");
+  Serial.println("                    or a device number (192..215)");
+  Serial.println("  off               switch off (MCL verified, PL untested)");
+  Serial.println("  standby           Beo4 ALL STANDBY (also: alloff, allstandby)");
+  Serial.println("  init              send the init sequence");
+  Serial.println("  init <value>      init with a test value");
+  Serial.println("  vol <value>       set volume (MK2 only)");
+  Serial.println("  verbose | v       toggle sniffer verbose (short/garbled captures)");
+#ifdef QCC_AT_BRIDGE_PRESENT
+  Serial.println("  AT...             forwarded to the QCC5124 (e.g. AT+GVER)");
+#endif
+  Serial.println("  ? | help          this list");
+}
 
 void SerialDebugCommands::poll() {
   while (Serial.available()) {
@@ -47,20 +65,23 @@ void SerialDebugCommands::poll() {
       continue;
     }
 
-    // POC (test, UNVERIFIED) - reproduces a real captured MCL "off"
-    // sequence from the older Master (sniffed live via
-    // BeoPowerlinkDisplay 2026-09): the same VOLUME SelectSource frame
-    // as a normal source-select, but the channel/track frame carries
-    // Seek=2/Value=0 instead of the usual transient/settled pattern -
-    // that combination was seen right as the Master was turned off.
-    // Device hardcoded to Radio(193), matching the capture; whether
-    // this actually powers anything down on real MK1 hardware is not
-    // confirmed.
+    if (lower == "?" || lower == "help") {
+      printHelp();
+      continue;
+    }
+
+    // toggles the sniffer's verbose mode (short/garbled captures)
+    if (lower == "verbose" || lower == "v") {
+      BusSniff::verbose() = !BusSniff::verbose();
+      Serial.printf("   -> sniffer verbose %s\n", BusSniff::verbose() ? "ON" : "OFF");
+      continue;
+    }
+
+    // "off": the writer knows its own switch-off sequence (MCL verified,
+    // PL untested - see MclBusWriter::sendOff / PlBusWriter::sendOff);
+    // it logs after sending.
     if (lower == "off") {
-      constexpr uint8_t device = 193; // Radio, matching the captured sequence
-      _writer->sendFrame(MclData::buildSelectSourceBits40(device, 72, 180, 90));
-      _writer->sendFrame(MclData::buildSelectSourceBits40(device, 64, 2, 0));
-      Serial.printf("   -> %s sends: OFF sequence (POC, unverified)\n", _writer->name()); // log only after TX - no I/O during timed send
+      _writer->sendOff();
       continue;
     }
 
@@ -116,6 +137,6 @@ void SerialDebugCommands::poll() {
       continue;
     }
 
-    Serial.println("debug: expected \"init\", \"vol <value>\", or a source name (radio, tv, cd, ...), optionally followed by a track value (e.g. \"radio 4\")");
+    Serial.println("   -> unknown command, input ? to see all commands");
   }
 }

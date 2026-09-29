@@ -56,6 +56,7 @@
 #include "common/GpioOutputs.hpp"
 #include "common/SerialDebugCommands.hpp"
 #include "common/BoardConfig.hpp"
+#include "common/BusSniff.hpp"
 
 // TEMP QCC-AT - AT-command bridge to a QCC5124 over UART1. Compiled out
 // automatically if src/common/QccAtBridge.hpp is deleted.
@@ -119,6 +120,7 @@ void setup() {
     writer = new MclBusWriter(MCL_TX_PIN,mclVariant); // never deleted - lives for the rest of the run
     Serial.println();
     Serial.printf("Beolab3500-Standalone MK1 (%s)- Master emulator %s\n", MclMasterVariant_NAMES[(int)mclVariant],BOARD_NAME);
+    Serial.println("input ? to see all commands");
     writer->begin();
     reader.begin();
      GpioOutputs::beginSourcePins();
@@ -128,6 +130,7 @@ void setup() {
 
   // MK2
   Serial.printf("Beolab3500-Standalone MK2 (PL)- BW emulator %s\n", BOARD_NAME);
+  Serial.println("input ? to see all commands");
   writer = new PlBusWriter(MCL_TX_PIN); // never deleted - lives for the rest of the run
   writer->begin();
   // reader.begin() intentionally not called: MK2 has nothing to react
@@ -180,6 +183,9 @@ void loop() {
   //Serial.printf("frame: %u bits  %s\n", bits.length(), bits.c_str());
 
   // 3. decode Format+AddrFrom+Data; bail if too short to have a header
+  if (writer->consumeEcho(bits)) return; // our own TX reflected back
+  BusSniff::logFrame(bits);               // every frame, listen-only
+
   MclData frame(bits);
   if (!frame.valid) return;
   //Serial.printf("  addrFrom=%u data(%u bit)=%u\n",
