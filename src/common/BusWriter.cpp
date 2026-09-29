@@ -34,13 +34,17 @@ void BusWriter::sendFrame(const String &bits) {
 }
 
 void BusWriter::sendSource(uint8_t device, uint8_t track) {
-  Serial.println("-> sendSource() not available on this writer");
+  Serial.println("   -> sendSource() not available on this writer");
 }
 
 void BusWriter::sendVol(uint8_t value) {
-  Serial.println("-> sendVol() only available for MK2");
+  Serial.println("   -> sendVol() only available for MK2");
 }
 
 void BusWriter::sendInit() {
-  Serial.println("-> sendInit() not available on this writer");
+  Serial.println("   -> sendInit() not available on this writer");
+}
+
+void BusWriter::sendInit(uint8_t value) {
+  Serial.println("   -> sendInit(value) not available on this writer");
 }

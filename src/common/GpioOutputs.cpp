@@ -2,69 +2,8 @@
 
 namespace GpioOutputs {
 
- 
-  //
-  // Pin numbers are board-specific (#ifdef, matching src/main-standalone.cpp's
-  // MCL_TX_PIN/MCL_RX_PIN/MK2_MUTE_PIN block) - they used to be one
-  // fixed list (4,5,17,19) that happened to collide with the Stamp S3's
-  // bus pins (GPIO5 = MK2_MUTE_PIN) and referenced GPIO17/19, which that
-  // module doesn't even break out (see docs.m5stack.com/en/core/StampS3
-  // - only G0-15 and G39-46 are exposed).
-
-
-    // placeholders - final assignment TBD.
-  // Attention this can changed from version to version !!!!
-#if defined(BOARD_M5STAMP_S3)
-const SourcePin SOURCE_PINS[] = {
-  {192, GPIO_NUM_44},  // TV
-  {193, GPIO_NUM_43},  // Radio
- // {194, GPIO_NUM_9},  // V.Aux
- // {195, GPIO_NUM_10}, // A.Aux
- // {197, GPIO_NUM_11}, // V.Tape
- // {198, GPIO_NUM_15}, // DVD
- // {202, GPIO_NUM_39}, // Sat
- // {203, GPIO_NUM_7},  // PC
- // {209, GPIO_NUM_40}, // A.Tape
- // {210, GPIO_NUM_14},  // CD
- // {211, GPIO_NUM_9},  // Phono
- // {212, GPIO_NUM_41}, // A.Tape2
- // {215, GPIO_NUM_42}, // CD2
-};
-#else // BOARD_WROOVER
-const SourcePin SOURCE_PINS[] = {
- // {192, GPIO_NUM_33},  // TV
- // {193, GPIO_NUM_34},  // Radio
- // {194, GPIO_NUM_12}, // V.Aux
- // {195, GPIO_NUM_13}, // A.Aux
- // {197, GPIO_NUM_14}, // V.Tape
- // {198, GPIO_NUM_15}, // DVD
- // {202, GPIO_NUM_16}, // Sat
- // {203, GPIO_NUM_17}, // PC
- // {209, GPIO_NUM_18}, // A.Tape
- // {210, GPIO_NUM_19}, // CD
- // {211, GPIO_NUM_22}, // Phono
- // {212, GPIO_NUM_23}, // A.Tape2
- // {215, GPIO_NUM_27}, // CD2
-};
-#endif
-const size_t SOURCE_PIN_COUNT = sizeof(SOURCE_PINS) / sizeof(SOURCE_PINS[0]);
-
-// see the extern declarations in GpioOutputs.hpp for why these are
-// board-specific: esp32_wrover must stay off GPIO6-11 (internal SPI
-// flash bus) - GPIO7/9 used to be shared between both boards and that
-// broke the WROVER hard. Picked 18/23 as free, non-strapping,
-// non-flash, output-capable pins there; if A.Tape(209)/A.Tape2(212) in
-// SOURCE_PINS above ever get uncommented on esp32_wrover, give these
-// two a different pin first (same reasoning as the old S3/PC note).
-#if defined(BOARD_M5STAMP_S3)
-const gpio_num_t KEY_PIN_LEFT  = GPIO_NUM_5;
-const gpio_num_t KEY_PIN_RIGHT = GPIO_NUM_7;
-const gpio_num_t KEY_PIN_STOP  = GPIO_NUM_9;
-#else // BOARD_WROOVER
-const gpio_num_t KEY_PIN_LEFT  = GPIO_NUM_5;
-const gpio_num_t KEY_PIN_RIGHT = GPIO_NUM_18;
-const gpio_num_t KEY_PIN_STOP  = GPIO_NUM_23;
-#endif
+// SOURCE_PINS[] / SOURCE_PIN_COUNT and KEY_PIN_LEFT/RIGHT/STOP are all
+// board-specific and live in common/BoardConfig.hpp now.
 
 void beginSourcePins() {
   for (size_t i = 0; i < SOURCE_PIN_COUNT; i++) {
@@ -80,11 +19,10 @@ void setActiveSourcePin(int device) {
     digitalWrite(SOURCE_PINS[i].pin, active ? HIGH : LOW);
     if (active) match = &SOURCE_PINS[i];
   }
-  if (match) Serial.printf("-> source %s: GPIO%d\n", MclData::deviceName((uint8_t) device), (int) match->pin);
-  else Serial.printf("-> source %s\n", MclData::deviceName((uint8_t) device));
+  if (match) Serial.printf("   -> output %s: GPIO%d\n", MclData::deviceName((uint8_t) device), (int) match->pin);
 }
 
-const gpio_num_t KEY_PINS[] = {KEY_PIN_LEFT, KEY_PIN_RIGHT, KEY_PIN_STOP};
+const gpio_num_t KEY_PINS[] = {KEY_PIN_LEFT, KEY_PIN_RIGHT, KEY_PIN_STOP};  
 const size_t KEY_PIN_COUNT = sizeof(KEY_PINS) / sizeof(KEY_PINS[0]);
 
 void beginKeyPins() {
@@ -130,7 +68,8 @@ bool handleNavKeys(const MclData &frame) {
     case 22: pin = KEY_PIN_STOP;  break; // Stop  (BEO_CMD_STOP  0x36 & 0x1F)
     default: return false;
   }
-  Serial.printf("-> key %u: GPIO%d pressed\n", key, (int) pin);
+  Serial.printf("[BL] key %s\n", key == 18 ? "Left" : key == 20 ? "Right" : "Stop");
+  Serial.printf("   -> output: GPIO%d pressed\n", (int) pin);
   pressKey(pin);
   return true;
 }

@@ -86,6 +86,19 @@ String MclData::buildSelectSourceBits(uint8_t device, uint8_t valueType, uint8_t
   return bits;
 }
 
+// See MclData.hpp - same field layout as buildSelectSourceBits() but no
+// trailing Byte6, matching the older real Master's confirmed 40-bit
+// SelectSource frames.
+String MclData::buildSelectSourceBits40(uint8_t device, uint8_t valueType, uint8_t seek, uint8_t value) {
+  String bits;
+  appendByte(bits, 59); // Command = Audio/SelectSource
+  appendByte(bits, device);
+  appendByte(bits, valueType);
+  appendByte(bits, seek);
+  appendByte(bits, value);
+  return bits;
+}
+
 // exact raw bitstring from the real capture (device=193=Radio),
 // verbatim, not byte-reconstructed - kept for A/B testing against
 // buildSelectSourceBits() with device=193, which produces this exact

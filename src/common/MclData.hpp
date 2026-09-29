@@ -70,6 +70,20 @@ public:
   // anywhere - see git history for why that was removed).
   static String buildSelectSourceBits(uint8_t device, uint8_t valueType, uint8_t seek, uint8_t value);
 
+  // Same fields as buildSelectSourceBits() but withOUT the trailing
+  // Byte6 - 40 bit, matching a real OLDER Master (not the Beocenter
+  // 2300 buildSelectSourceBits() above was modeled on), sniffed live via
+  // BeoPowerlinkDisplay 2026-09: it never sends a separate Sound(51)
+  // frame, instead carrying volume directly as ValueType=72 (VOLUME) and
+  // channel/track as ValueType=64 in these 40-bit SelectSource frames.
+  // Also matches the older hardcoded example table in
+  // BeoPowerlinkDisplay/src/Programm.cpp (059 193 072 108 034 / 059 193
+  // 064 000 004). Seek's meaning for ValueType=72 is NOT confirmed - two
+  // real captures show unrelated-looking Seek values (108, 180) for
+  // different Value/context, so callers currently just pass a
+  // placeholder there rather than a derived formula.
+  static String buildSelectSourceBits40(uint8_t device, uint8_t valueType, uint8_t seek, uint8_t value);
+
 
   // Radio's exact real captured SelectSource bitstring (device=193),
   // hardcoded rather than derived from `device` - for A/B testing

@@ -4,10 +4,10 @@
 
   Handles both Beolab 3500 hardware revisions from one firmware -
   `blVersion` below is just the startup default, auto-detected and
-  overridden in setup() via the MK2_DETECTED GPIO, so no source edit
-  is needed to switch revision. Which *board* to build for (pin
-  numbers only) is picked via the platformio.ini env instead - see
-  the `#ifdef BOARD_M5STAMP_S3` block below. MK1 and MK2 share the
+  overridden in setup() via the MK2_DETECTED_PIN GPIO, so no source edit
+  is needed to switch revision. Which *board* to build for is picked via
+  a -D BOARD_* flag in the platformio.ini env - all board-specific pins
+  and values live in common/BoardConfig.hpp. MK1 and MK2 share the
   exact same wire-level protocol
   (t1..t5 timing, AGC preamble, differential bit encoding - see
   common/BusReader.hpp) but differ in frame *content*:
@@ -29,11 +29,11 @@
     PlBusWriter::sendInit() sends - confirmed init-specific, not a
     general MK2-traffic property (see common/PlBusWriter.cpp).
 
-  Board: two platformio.ini envs, `esp32_wrover` (ESP32 WROVER DevKit)
-  and `m5_stamp_S3` (M5Stack Stamp S3, the default). RX/TX/mute pins
-  differ between them - see the #ifdef block below, or BusReader for
-  the RX-side electrical interface (same divider+transistor circuit
-  for both revisions, just different GPIOs per board).
+  Board: one -D BOARD_* flag per platformio.ini env (BOARD_WROOVER,
+  BOARD_M5STAMP_S3, BOARD_S3_MINI). RX/TX/mute pins per board are in
+  common/BoardConfig.hpp; see BusReader for the RX-side electrical
+  interface (same divider+transistor circuit for both revisions, just
+  different GPIOs per board).
 
   Per B&O MCL-2 Service Manual ("Datalink '86"), MK1 frame content:
   - Timing symbols: t1=3.125ms t2=6.250ms t3=9.375ms (data),
@@ -55,36 +55,24 @@
 #include "common/MclData.hpp"
 #include "common/GpioOutputs.hpp"
 #include "common/SerialDebugCommands.hpp"
+#include "common/BoardConfig.hpp"
 
-// set this to match the board you're about to flash - see file header
-static BL3500Version blVersion = BL3500Version::MK1;
-#ifdef BOARD_M5STAMP_S3
-constexpr gpio_num_t MCL_RX_PIN = GPIO_NUM_1;
-
-constexpr gpio_num_t MCL_TX_PIN = GPIO_NUM_3;
-constexpr gpio_num_t MK2_MUTE_PIN = GPIO_NUM_5;
-constexpr gpio_num_t MK2_BL_MUTE_PIN = GPIO_NUM_9;
-constexpr gpio_num_t MK2_DETECTED = GPIO_NUM_43;
-
-String board= "stamp";
-#else
-constexpr gpio_num_t MK2_MUTE_PIN = GPIO_NUM_26;
-constexpr gpio_num_t MK2_BL_MUTE_PIN = GPIO_NUM_33;
-constexpr gpio_num_t MK2_DETECTED = GPIO_NUM_32;
-constexpr gpio_num_t MCL_RX_PIN = GPIO_NUM_34;
-constexpr gpio_num_t MCL_TX_PIN = GPIO_NUM_25;
-String board= "wroover";
+// TEMP QCC-AT - AT-command bridge to a QCC5124 over UART1. Compiled out
+// automatically if src/common/QccAtBridge.hpp is deleted.
+// DISABLED by default - build with -D QCC_AT_ENABLE to turn it back on.
+#if defined(QCC_AT_ENABLE) && __has_include("common/QccAtBridge.hpp")
+#include "common/QccAtBridge.hpp"
+#define QCC_AT_BRIDGE_PRESENT 1
 #endif
 
-// MK2 only: BL3500 Mk2's display doesn't update correctly unless this
-// is driven around writer->sendInit() - own dedicated pin, deliberately
-// not GPIO14 (that's GpioOutputs::KEY_PIN_STOP, MK1's Stop nav key -
-// must stay distinct even though MK1/MK2 never run in the same build).
-// NOT GPIO34/35/36/39 - those are input-only on the ESP32 (no output
-// driver), confirmed the hard way: pinMode(35, OUTPUT) failed
-// ("GPIO can only be used as input mode"). GPIO26 has an output
-// driver and isn't a boot-strapping pin (unlike 0/2/12/15) - change if
-// it's not physically reachable on the board either.
+// MK1 vs MK2 is auto-detected at runtime (MK2_DETECTED_PIN, in setup()).
+// All board-specific pins live in common/BoardConfig.hpp.
+static BL3500Version blVersion = BL3500Version::MK1;
+
+// MK2_MUTE_PIN (BoardConfig.hpp) is MK2-only: driven around
+// writer->sendInit() or the Mk2 display won't refresh. Must stay
+// distinct from the KEY_PIN_* nav keys and off any input-only pin
+// (ESP32 GPIO34-39) - see BoardConfig.hpp.
 
 // only one concrete writer ever exists - constructed with `new` in
 // setup() once blVersion is finalized there (MK2 auto-detect via GPIO
@@ -106,10 +94,15 @@ static SerialDebugCommands debugCommands(writer, blVersion, MK2_MUTE_PIN);
 void setup() {
   Serial.begin(115200);
   delay(500);
-    pinMode(MK2_DETECTED, INPUT_PULLDOWN);
 
-  if (digitalRead(MK2_DETECTED) == HIGH) {
-    Serial.printf("MK2 detected via GPIO%d\n", (int) MK2_DETECTED);
+#ifdef QCC_AT_BRIDGE_PRESENT
+  QccAtBridge::begin();  // TEMP QCC-AT
+#endif
+
+    pinMode(MK2_DETECTED_PIN, INPUT_PULLDOWN);
+
+  if (digitalRead(MK2_DETECTED_PIN) == HIGH) {
+    Serial.printf("MK2 detected via GPIO%d\n", (int) MK2_DETECTED_PIN);
     blVersion = BL3500Version::MK2;
   }
 
@@ -118,8 +111,14 @@ void setup() {
   // writer's declaration above for why this can't happen earlier).
   if (blVersion == BL3500Version::MK1) {
     GpioOutputs::beginKeyPins();
-    Serial.printf("Beolab3500-Standalone MK1 - MCL/PL Master emulator %s\n", board.c_str());
-    writer = new MclBusWriter(MCL_TX_PIN); // never deleted - lives for the rest of the run
+    // MclMasterVariant::PL = Beocenter 2300 style, ::MCL = the other,
+    // older real Master style - see MclBusWriter.hpp/.cpp for what each
+    // sends. Switch here to A/B test against whichever real Master is
+    // actually on the bus.
+    MclMasterVariant mclVariant = MclMasterVariant::MCL;
+    writer = new MclBusWriter(MCL_TX_PIN,mclVariant); // never deleted - lives for the rest of the run
+    Serial.println();
+    Serial.printf("Beolab3500-Standalone MK1 (%s)- Master emulator %s\n", MclMasterVariant_NAMES[(int)mclVariant],BOARD_NAME);
     writer->begin();
     reader.begin();
      GpioOutputs::beginSourcePins();
@@ -128,7 +127,7 @@ void setup() {
   }
 
   // MK2
-  Serial.printf("Beolab3500-Standalone MK2 - Master emulator %s\n", board.c_str());
+  Serial.printf("Beolab3500-Standalone MK2 (PL)- BW emulator %s\n", BOARD_NAME);
   writer = new PlBusWriter(MCL_TX_PIN); // never deleted - lives for the rest of the run
   writer->begin();
   // reader.begin() intentionally not called: MK2 has nothing to react
@@ -146,10 +145,14 @@ void setup() {
 }
 
 void loop() {
- 
- 
+
+
 
   debugCommands.poll();
+
+#ifdef QCC_AT_BRIDGE_PRESENT
+  QccAtBridge::poll();  // TEMP QCC-AT - pump QCC5124 replies to USB serial
+#endif
 
   if (blVersion == BL3500Version::MK2) {
     // mute from BL device - WIP. MK2-gated on purpose: MK2_MUTE_PIN/
@@ -193,10 +196,16 @@ void loop() {
   //    check too (not just the key value).
   if (GpioOutputs::handleNavKeys(frame)) return;
 
+  
+
   // 6. everything else must be BL3500's own source-select notify
   //    (addrFrom=12) with a Beo4 key code (& 0x1F) already mapped to a
   //    BODev_* device by the MclData constructor; ignore anything else
-  if (frame.addrFrom != MclData::BL3500_ADDR || frame.device < 0) return;
+  if (frame.addrFrom != MclData::BL3500_ADDR || frame.device < 0) {
+    Serial.printf("[BL] ignored: addr=%u device=%d\n", (unsigned) frame.addrFrom, (int) frame.device);
+    return;
+  }
+  Serial.printf("[BL] key %s\n", MclData::deviceName((uint8_t) frame.device)); // trigger: BL3500 source key
 
   // 7. reply as Master would, and drive the matching source pin
   writer->sendSource((uint8_t) frame.device, 1);

@@ -14,6 +14,7 @@ class PlBusWriter : public BusWriter {
 public:
   explicit PlBusWriter(gpio_num_t pin) : BusWriter(pin) {}
 
+  const char* name() const override { return "PL"; }
   void sendSource(uint8_t device, uint8_t track) override;
   void sendVol(uint8_t value) override;
   void sendInit() override;

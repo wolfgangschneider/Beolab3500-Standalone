@@ -35,6 +35,9 @@ public:
 
   void begin();
 
+  // short name for log lines ("MCL"/"PL") - "-> <name> sends: ..."
+  virtual const char* name() const { return "Writer"; }
+
   // sends bits ("1011...") framed as AGC + Start + data + Stop
   void sendFrame(const String &bits);
 
@@ -63,6 +66,12 @@ public:
   // PlBusWriter.cpp (MK2: the captured power-on frame) for what each
   // actually does. Default here just logs "not available".
   virtual void sendInit();
+
+  // Same as sendInit(), but with an explicit test value instead of the
+  // revision's usual hardcoded one - lets the debug "init <value>"
+  // Serial command probe other values. Default here just logs "not
+  // available".
+  virtual void sendInit(uint8_t value);
 
 protected:
   static constexpr uint32_t T1_US = 3125;
