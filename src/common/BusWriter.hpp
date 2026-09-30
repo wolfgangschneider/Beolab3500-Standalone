@@ -71,6 +71,17 @@ public:
   // actually does. Default here just logs "not available".
   virtual void sendInit();
 
+  // MK2 feature: drives the MK2 mute pin (debug "mute 1|0" command, parsed
+  // by SerialDebugCommands): true = muted (pin LOW), false = released
+  // (HIGH). The writer logs the pin write. Default here just logs "only
+  // available for MK2".
+  virtual void sendMute(bool on);
+
+  // Beo4 ALL STANDBY (debug "standby"/"alloff"/"allstandby" commands) - the
+  // same literal frames for every writer, so this one is implemented here
+  // in the base class. Logs after sending.
+  virtual void sendStandby();
+
   // Switches the system off (debug "off" command). Sequence differs per
   // writer - see MclBusWriter.cpp (MCL: verified on real hardware) and
   // PlBusWriter.cpp / MclBusWriter PL variant (UNTESTED). Default here just

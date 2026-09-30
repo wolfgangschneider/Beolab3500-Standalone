@@ -38,6 +38,7 @@ public:
   void sendInit(uint8_t value) override;
 
 private:
+  void sendInitFrame(); // the Sound-setup frame only, no logging
   MclMasterVariant _variant;
 
   int counter = 0;

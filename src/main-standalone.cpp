@@ -131,20 +131,19 @@ void setup() {
   // MK2
   Serial.printf("Beolab3500-Standalone MK2 (PL)- BW emulator %s\n", BOARD_NAME);
   Serial.println("input ? to see all commands");
-  writer = new PlBusWriter(MCL_TX_PIN); // never deleted - lives for the rest of the run
+  writer = new PlBusWriter(MCL_TX_PIN,MK2_MUTE_PIN); // never deleted - lives for the rest of the run
   writer->begin();
   // reader.begin() intentionally not called: MK2 has nothing to react
   // to and no decode path in loop() to drain it (see file header).
 
   pinMode(MK2_MUTE_PIN, OUTPUT);
-  pinMode(MK2_BL_MUTE_PIN, INPUT_PULLDOWN);
+  pinMode(MK2_EXT_MUTE_PIN, INPUT_PULLDOWN);
 
-  // Mute LOW during init is only needed for the display to update
-  // correctly - has to stay LOW for the whole duration of sendInit(),
-  // then HIGH; loop()'s mute-mirror takes over afterwards anyway.
-  digitalWrite(MK2_MUTE_PIN, LOW);
+  // the writer holds MK2_MUTE_PIN LOW for the whole duration of sendInit()
+  // (needed for the display to update) and releases it HIGH afterwards;
+  // loop()'s mute-mirror takes over from there.
+  //Serial.println("[start] init");
   writer->sendInit();
-  digitalWrite(MK2_MUTE_PIN, HIGH);
 }
 
 void loop() {
@@ -158,13 +157,20 @@ void loop() {
 #endif
 
   if (blVersion == BL3500Version::MK2) {
-    // mute from BL device - WIP. MK2-gated on purpose: MK2_MUTE_PIN/
-    // MK2_BL_MUTE_PIN share physical GPIOs with MK1-only KEY_PIN_LEFT/
+    // external mute source (HIGH = mute) -> MK2's own mute pin (Beolab
+    // pin 4) - WIP, source not pinned down yet. MK2-gated on purpose: MK2_MUTE_PIN/
+    // MK2_EXT_MUTE_PIN share physical GPIOs with MK1-only KEY_PIN_LEFT/
     // STOP (see GpioOutputs.hpp) - safe since MK1 and MK2 code never
     // run in the same boot.
-    bool mk2Mute = digitalRead(MK2_BL_MUTE_PIN) == HIGH;
-     digitalWrite(MK2_MUTE_PIN, !mk2Mute); // mirror the external (BL) mute signal to the MK2's own mute pin
-    //Serial.printf("loop() tick: MK2_BL_MUTE_PIN=%d -> MK2_MUTE_PIN=%d\n", mk2Mute, !mk2Mute);
+    // Mirrored only when the external mute signal CHANGES (not every tick), so a value
+    // set by the "mute 1|0" command isn't overwritten a millisecond later.
+    static bool lastMk2Mute = false; // init leaves the pin HIGH = not muted
+    bool mk2Mute = digitalRead(MK2_EXT_MUTE_PIN) == HIGH;
+    if (mk2Mute != lastMk2Mute) {
+      lastMk2Mute = mk2Mute;
+      digitalWrite(MK2_MUTE_PIN, !mk2Mute); // mirror the external mute signal to the MK2's own mute pin
+    }
+    //Serial.printf("loop() tick: MK2_EXT_MUTE_PIN=%d -> MK2_MUTE_PIN=%d\n", mk2Mute, !mk2Mute);
     return; // no automatic flow yet - debugCommands.poll() is the only TX trigger
   }
 

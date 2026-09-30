@@ -15,11 +15,12 @@ void SerialDebugCommands::printHelp() {
   Serial.println("  <source> [track]  select a source, e.g. \"cd 6\", \"radio\"");
   Serial.println("                    sources: tv radio v.aux a.aux v.tape dvd sat pc a.tape cd phono a.tape2 cd2");
   Serial.println("                    or a device number (192..215)");
-  Serial.println("  off               switch off (MCL verified, PL untested)");
+  Serial.println("  off               switch off (MCL: system, MK2: display only)");
   Serial.println("  standby           Beo4 ALL STANDBY (also: alloff, allstandby)");
   Serial.println("  init              send the init sequence");
   Serial.println("  init <value>      init with a test value");
   Serial.println("  vol <value>       set volume (MK2 only)");
+  Serial.println("  mute 1|0          mute on/off (MK2 only)");
   Serial.println("  verbose | v       toggle sniffer verbose (short/garbled captures)");
 #ifdef QCC_AT_BRIDGE_PRESENT
   Serial.println("  AT...             forwarded to the QCC5124 (e.g. AT+GVER)");
@@ -49,19 +50,9 @@ void SerialDebugCommands::poll() {
     String lower = line;
     lower.toLowerCase();
 
-    // POC (UNVERIFIED - no captured reference frame): "ALL STANDBY".
-    // Beo4 ALL(0x0F) source + STANDBY(0x0C) command, sent as a full
-    // SelectSource-length frame (see MclData::buildBeo4CommandBits),
-    // plus the same trailing pulse the other Pl frames use. If real
-    // hardware ignores this, revert the POC commit - nothing else
-    // depends on it.
+    // POC (UNVERIFIED) Beo4 ALL STANDBY - frames and log live in the writer
     if (lower == "standby" || lower == "alloff" || lower == "allstandby") {
-      const uint8_t cmd = 0x0C, src = 0x01;
-      _writer->sendFrame("0011101111000001010010000111000000100100");
-      _writer->sendFrame("0011101111000001010000000000001000000000");
-      //_writer->sendFrame(MclData::buildBeo4CommandBits(cmd, src));
-      //_writer->pulse(1);
-      Serial.printf("   -> %s sends: ALL STANDBY (cmd=0x%02X src=0x%02X)\n", _writer->name(), cmd, src); // log only after TX - no I/O during timed send
+      _writer->sendStandby();
       continue;
     }
 
@@ -77,19 +68,19 @@ void SerialDebugCommands::poll() {
       continue;
     }
 
-    // "off": the writer knows its own switch-off sequence (MCL verified,
-    // PL untested - see MclBusWriter::sendOff / PlBusWriter::sendOff);
-    // it logs after sending.
+    // "off": the writer knows its own switch-off sequence (MCL switches the
+    // system off, MK2 only the display, MCL-writer PL variant untested - see
+    // MclBusWriter::sendOff / PlBusWriter::sendOff); it logs after sending.
     if (lower == "off") {
       _writer->sendOff();
       continue;
     }
 
     if (lower == "init") {
-      //digitalWrite(_mk2MutePin, LOW); // ensure mute is off during the init sequence when display is needed
+     
       _writer->sendInit();
       //digitalWrite(_mk2MutePin, HIGH); // ensure mute is off after the init sequence
-      Serial.printf("   -> %s sends: init\n", _writer->name()); // log only after TX - no I/O during timed send
+      // the writer logs itself (incl. its GPIO writes, in order)
       continue;
     }
 
@@ -100,9 +91,8 @@ void SerialDebugCommands::poll() {
     if (lower.startsWith("init ")) {
       int initValue = line.substring(5).toInt();
       //digitalWrite(_mk2MutePin, LOW);
-      _writer->sendInit((uint8_t) initValue);
+      _writer->sendInit((uint8_t) initValue); // the writer logs itself
       //digitalWrite(_mk2MutePin, HIGH);
-      Serial.printf("   -> %s sends: init value=%d\n", _writer->name(), initValue); // log only after TX - no I/O during timed send
       continue;
     }
 
@@ -111,6 +101,12 @@ void SerialDebugCommands::poll() {
     // split a name from its track (some names, e.g. "cd2"/"a.tape2",
     // already end in a digit, so "cd25" alone couldn't be split
     // unambiguously into name+track).
+    // "mute 1" / "mute 0": the writer switches and logs the pin (MK2 only)
+    if (lower == "mute 1" || lower == "mute 0") {
+      _writer->sendMute(lower == "mute 1");
+      continue;
+    }
+
     if (lower.startsWith("vol ")) {
       int volValue = line.substring(4).toInt();
       _writer->sendVol((uint8_t) volValue);

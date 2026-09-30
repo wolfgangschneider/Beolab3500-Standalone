@@ -9,7 +9,7 @@ void MclBusWriter::sendSource(uint8_t device, uint8_t track) {
     // Beocenter 2300 style: Sound-setup frame + 48-bit SelectSource, twice
     String select = MclData::buildSelectSourceBits(device, 96, 0x00, track);
 
-    sendInit();
+    sendInitFrame();
     sendFrame(select);
     sendFrame(select); // for sending debug commands we need one more
   }
@@ -34,7 +34,7 @@ void MclBusWriter::sendSource(uint8_t device, uint8_t track) {
       used = "EX-PL";
       String select = MclData::buildSelectSourceBits(device, 96, 0x00, track);
 
-      sendInit();
+      sendInitFrame();
       sendFrame(select);
       sendFrame(select);
     } else {
@@ -95,9 +95,15 @@ void MclBusWriter::sendVol(uint8_t value) {
 // BeoPowerlinkDisplay, broadcasts this exact Type=78/SubType=128
 // (VOLUME)/Value=90 Sound frame itself, so hardcoding 90 here matches
 // real bus traffic, not just a plausible-looking guess.
-void MclBusWriter::sendInit() {
+void MclBusWriter::sendInitFrame() {
   sendFrame(MclData::buildSoundSetupBits(78, 128, 90));
+}
 
+// public init: the frame, then the log line (sendSource() uses the silent
+// sendInitFrame() - no I/O between its frames)
+void MclBusWriter::sendInit() {
+  sendInitFrame();
+  Serial.printf("   -> %s sends: init\n", name());
 }
 
 // for testing
@@ -106,5 +112,5 @@ void MclBusWriter::sendInit(uint8_t value) {
  constexpr uint8_t device = 193; // Radio, matching the captured sequence
       sendFrame(MclData::buildSelectSourceBits40(device, 72, value, 0));
       sendFrame(MclData::buildSelectSourceBits40(device, 64, 2, 0));
-     
+  Serial.printf("   -> %s sends: init value=%d\n", name(), value);
 }

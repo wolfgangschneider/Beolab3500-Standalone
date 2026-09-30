@@ -28,7 +28,7 @@ constexpr const char *BOARD_NAME = "wrover";
 constexpr gpio_num_t MCL_RX_PIN       = GPIO_NUM_34;   // input-only pin - fine, read-only
 constexpr gpio_num_t MCL_TX_PIN       = GPIO_NUM_25;
 constexpr gpio_num_t MK2_MUTE_PIN     = GPIO_NUM_26;
-constexpr gpio_num_t MK2_BL_MUTE_PIN  = GPIO_NUM_33;
+constexpr gpio_num_t MK2_EXT_MUTE_PIN = GPIO_NUM_33;
 constexpr gpio_num_t MK2_DETECTED_PIN = GPIO_NUM_32;
 
 constexpr gpio_num_t KEY_PIN_LEFT     = GPIO_NUM_5;
@@ -68,7 +68,7 @@ constexpr const char *BOARD_NAME = "Stamp-S3";
 constexpr gpio_num_t MCL_RX_PIN       = GPIO_NUM_1;
 constexpr gpio_num_t MCL_TX_PIN       = GPIO_NUM_3;
 constexpr gpio_num_t MK2_MUTE_PIN     = GPIO_NUM_5;
-constexpr gpio_num_t MK2_BL_MUTE_PIN  = GPIO_NUM_9;
+constexpr gpio_num_t MK2_EXT_MUTE_PIN = GPIO_NUM_9;
 constexpr gpio_num_t MK2_DETECTED_PIN = GPIO_NUM_43;
 
 constexpr gpio_num_t KEY_PIN_LEFT     = GPIO_NUM_5;
@@ -107,7 +107,7 @@ constexpr const char *BOARD_NAME = "S3-MINI";
 constexpr gpio_num_t MCL_RX_PIN       = GPIO_NUM_8;
 constexpr gpio_num_t MCL_TX_PIN       = GPIO_NUM_9;
 constexpr gpio_num_t MK2_MUTE_PIN     = GPIO_NUM_10;
-constexpr gpio_num_t MK2_BL_MUTE_PIN  = GPIO_NUM_12;
+constexpr gpio_num_t MK2_EXT_MUTE_PIN = GPIO_NUM_12;
 constexpr gpio_num_t MK2_DETECTED_PIN = GPIO_NUM_3;//GPIO_NUM_43;
 
 constexpr gpio_num_t KEY_PIN_LEFT     = GPIO_NUM_10;

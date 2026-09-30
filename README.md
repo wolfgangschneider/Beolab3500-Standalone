@@ -116,7 +116,7 @@ All named pins on `standalone_m5_stamp_S3`, and what each one does in MK1 vs MK2
 | GPIO3  | `MCL_TX_PIN` - sends on the bus | `MCL_TX_PIN` - sends on the bus |
 | GPIO5  | `KEY_PIN_LEFT` (nav key input) | `MK2_MUTE_PIN` (mute output to Beolab pin 4) |
 | GPIO7  | `KEY_PIN_RIGHT` (nav key input) | unused |
-| GPIO9  | `KEY_PIN_STOP` (nav key input) | `MK2_BL_MUTE_PIN` (reads an external (BL) mute signal) |
+| GPIO9  | `KEY_PIN_STOP` (nav key input) | `MK2_EXT_MUTE_PIN` (reads an external mute signal, HIGH = mute) |
 | GPIO43 | `SOURCE_PINS` Radio output *(after boot)* | `MK2_DETECTED` (read once at boot to pick MK1 vs MK2) |
 | GPIO44 | `SOURCE_PINS` TV output | unused |
 
@@ -152,7 +152,7 @@ ESP32 - standalone_m5_stamp_S3 ⚠️ work in progress, will change
 └───────────────────────────┘
 ```
 
-GPIO5/9 are shared with `MK2_MUTE_PIN`/`MK2_BL_MUTE_PIN` (MK1-only vs MK2-only, see the pin table above) - not a typo.
+GPIO5/9 are shared with `MK2_MUTE_PIN`/`MK2_EXT_MUTE_PIN` (MK1-only vs MK2-only, see the pin table above) - not a typo.
 
 ### Protocol notes (MCL-2 "Datalink '86")
 
