@@ -70,8 +70,8 @@
 // All board-specific pins live in common/BoardConfig.hpp.
 static BL3500Version blVersion = BL3500Version::MK1;
 
-// MK2_MUTE_PIN (BoardConfig.hpp) is MK2-only: driven around
-// writer->sendInit() or the Mk2 display won't refresh. Must stay
+// MK2_MUTE_PIN (BoardConfig.hpp) is MK2-only: the mute output to the
+// Beolab (pin 4), driven by the writer's sendMute()/sendInit(). Must stay
 // distinct from the KEY_PIN_* nav keys and off any input-only pin
 // (ESP32 GPIO34-39) - see BoardConfig.hpp.
 
@@ -139,9 +139,8 @@ void setup() {
   pinMode(MK2_MUTE_PIN, OUTPUT);
   pinMode(MK2_EXT_MUTE_PIN, INPUT_PULLDOWN);
 
-  // the writer holds MK2_MUTE_PIN LOW for the whole duration of sendInit()
-  // (needed for the display to update) and releases it HIGH afterwards;
-  // loop()'s mute-mirror takes over from there.
+  // sendInit() releases MK2_MUTE_PIN (HIGH) at its end; loop()'s
+  // mute-mirror takes over from there.
   //Serial.println("[start] init");
   writer->sendInit();
 }

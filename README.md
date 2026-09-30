@@ -29,13 +29,16 @@ When you press a source key on the Beolab 3500's own remote:
    ```
    Format(3)=`000`, Address(to)(5)=`00000`, Address(from)(4)=`1100` (=12, its own bus address), Data(5)=`00001` (=1, Radio's Beo4 key code)
 
-2. **This board → bus**: a Sound and a SelectSource frame, exactly as a real Master (Beocenter 2300) sends them:
+2. **This board → bus**: the reply a real Master would send. Two real Master styles were sniffed, selected in `setup()` through `MclMasterVariant` (currently `MCL`, see `common/MclBusWriter.cpp`):
 
-   Sound (47 bits):
+   - **MCL** (an older Master, e.g. a BM4500): no Sound frame. A VOLUME and a channel/track SelectSource frame (40 bit each), sent as a pair **twice**.
+   - **PL** (Beocenter 2300): a Sound frame plus a SelectSource frame, as below.
+
+   Sound (47 bits, PL style):
    ```
    00110011010011101011000000001111000001010001000
    ```
-   SelectSource (48 bits):
+   SelectSource (48 bits, PL style):
    ```
    001110111100000101100000000001000000001000000000
    ```
@@ -103,10 +106,10 @@ Pin 7 ─── Shield (GND)        ──────────────�
 
                     GPIO5  (Mute)          ─────────────────────────────────────────► Beolab 3500 MKII (pin 4)
                     GPIO43 (MK2 detection) ◄───────────────────────────────────────── ESP32 +3V3  (wire this on MK2 boards so MK2_DETECTED reads HIGH)
-                    GPIO9  (External Force Mute) ◄──────────────────────────────────  external mute source (HIGH = mute)
+                    GPIO9  (external mute input) ◄──────────────────────────────────  external mute source (HIGH = mute)
 ```
 
-Pin numbers above are for `standalone_m5_stamp_S3` (the active `default_envs`); `standalone_esp32_wrover` uses different physical pins for the same circuit (GPIO34/25/26 for RX/TX/Mute - see the `#ifdef` block at the top of `src/main-standalone.cpp`).
+Pin numbers above are for `standalone_m5_stamp_S3` (the active `default_envs`); `standalone_esp32_wrover` uses different physical pins for the same circuit (GPIO34/25/26 for RX/TX/Mute, GPIO33 for the external mute input, GPIO32 for MK2 detection - see the `BOARD_WROOVER` block in `src/common/BoardConfig.hpp`).
 
 All named pins on `standalone_m5_stamp_S3`, and what each one does in MK1 vs MK2 (`blVersion` is now auto-detected at boot via `MK2_DETECTED`, not hand-set - see `src/main-standalone.cpp`'s `setup()`):
 
@@ -120,7 +123,7 @@ All named pins on `standalone_m5_stamp_S3`, and what each one does in MK1 vs MK2
 | GPIO43 | `SOURCE_PINS` Radio output *(after boot)* | `MK2_DETECTED` (read once at boot to pick MK1 vs MK2) |
 | GPIO44 | `SOURCE_PINS` TV output | unused |
 
-GPIO5/9/43 are deliberately shared between an MK1-only and an MK2-only purpose - safe because `blVersion` is fixed for the whole run (decided once at boot from GPIO43) and the MK1-only code (`beginKeyPins()`/`pressKey()`/`beginSourcePins()`) vs MK2-only code (the mute-mirror block in `loop()`) never both run in the same boot. GPIO43 is the odd one out: it's read once as `MK2_DETECTED` *before* `blVersion` is known, then - only on MK1 - repurposed as the Radio source-select output for the rest of that run.
+GPIO5/9/43 are deliberately shared between an MK1-only and an MK2-only purpose - safe because `blVersion` is fixed for the whole run (decided once at boot from GPIO43) and the MK1-only code (`beginKeyPins()`/`pressKey()`/`beginSourcePins()`) vs MK2-only code (the external-mute mirror block in `loop()`, which only writes `MK2_MUTE_PIN` when the external input changes - so a manual `mute 1|0` isn't overwritten) never both run in the same boot. GPIO43 is the odd one out: it's read once as `MK2_DETECTED` *before* `blVersion` is known, then - only on MK1 - repurposed as the Radio source-select output for the rest of that run.
 
 
 ### Schematic (per-source select outputs)
@@ -180,7 +183,14 @@ Simple, two things needed — tie **PL4** to **+5V**, and send `0011000111100111
 
 It gets more complicated — two additional requirements:
 1. After a frame's normal Stop (t4), one more t1 pulse (3.125ms) - applies to every MK2 command, not just the init sequence.
-2. Mute (`MK2_MUTE_PIN`, GPIO26 in `main-standalone.cpp`) must only go HIGH *after* that init sequence (`0011000111100111111100000000100`) has finished sending — it has to stay LOW for the whole duration of the sequence.
+2. The display only reacts when the init frame (`0011000111100111111100000000100`) is sent (again).
+
+The mute pin (`MK2_MUTE_PIN`, Beolab pin 4) is a separate output that mutes the speaker itself. It is driven by the `mute 1|0` Serial command (1 = LOW = muted, 0 = HIGH), is released (HIGH) at the end of `sendInit()`, and follows an external mute input (`MK2_EXT_MUTE_PIN`) when that changes.
+
+What the MK2 writer (`PlBusWriter`) sends, as confirmed on real hardware:
+- **source**: a SelectSource "activate" frame with track 0, then the same frame with the requested track, each followed by the trailing pulse.
+- **volume** (`vol <value>`): a Sound frame with 0, then one with the value - changes **only the display**, not the real volume (the speaker's volume can't be controlled over PL).
+- **off**: one SelectSource "activate" frame (`seek=2 value=0`, sniffed from a real PL Master) - switches **only the display off**, not the system.
 
 ### Schematic (bus interface)
 see MK I
@@ -216,25 +226,71 @@ Both Beolab 3500 revisions share one bus implementation (confirmed identical wir
 
 - `src/main-standalone.cpp` — auto-detects MK1 vs MK2 via GPIO at boot and points a single `BusWriter *writer` at the matching subclass:
   - **MK1**: fully automatic — read an MCL/PL notify frame, filter for the Beolab 3500's request, reply, drive the active source pin.
-  - **MK2**: no automatic flow (BL3500 Mk2 doesn't send anything of its own onto the bus — it's a passive speaker, all traffic originates from the real Master) — `setup()` sends a built power-on sequence once at boot (`writer->sendInit()`), and `SerialDebugCommands`'s Serial commands are otherwise the only way to send anything: `init` and `vol <value>` (MK2 only), plus the shared `<source name> [track]` command also used by MK1.
+  - **MK2**: no automatic flow (BL3500 Mk2 doesn't send anything of its own onto the bus — it's a passive speaker, all traffic originates from the real Master) — `setup()` sends a built power-on sequence once at boot (`writer->sendInit()`), and `SerialDebugCommands`'s Serial commands are otherwise the only way to send anything - see [Serial commands](#serial-commands-and-log-output).
 - `src/common/`:
   - `BL3500Version.hpp` — the `MK1`/`MK2` enum, decided once at boot and used to pick the writer subclass and gate MK1-/MK2-only code
-  - `SerialDebugCommands.*` — the Serial command-line handler (`init`/`vol <value>`/`<source name> [track]`), polled from `main-standalone.cpp`'s `loop()`
+  - `SerialDebugCommands.*` — the Serial command line, polled from `main-standalone.cpp`'s `loop()`. It only parses commands and dispatches to the writer (plus its own `verbose`/`?`); everything a writer sends or switches is logged by the writer itself
   - `BusReader.*` — RMT-based bus capture and pulse-to-bit decoding, shared by both revisions (MK1 only calls `begin()`/`poll()` on it - MK2 has nothing to read)
-  - `BusWriter.*` — base class: bit-to-pulse encoding/transmission (`begin`/`sendFrame`/`pulse`, identical for both revisions) plus the `sendSource`/`sendVol`/`sendInit` interface, virtual with harmless "not available" defaults (not pure virtual - keeps `BusWriter` itself concretely instantiable, which Beolab3500-PL2PL below relies on), implemented for real by:
-    - `MclBusWriter.*` — MK1's real frame content
-    - `PlBusWriter.*` — MK2's real frame content (including its extra trailing pulse - see [Beolab 3500 Mk II](#beolab-3500-mk-ii))
+  - `BusSniff.hpp` — the listen-only **sniffer**: logs every frame `BusReader` delivers that isn't our own echo (see [Serial commands](#serial-commands-and-log-output))
+  - `BusWriter.*` — base class: bit-to-pulse encoding/transmission (`begin`/`sendFrame`/`pulse`, identical for both revisions), echo detection (`consumeEcho`, so our own TX isn't shown as Master traffic) and the `sendSource`/`sendVol`/`sendInit`/`sendOff`/`sendMute` interface, virtual with harmless "not available" defaults (not pure virtual - keeps `BusWriter` itself concretely instantiable, which Beolab3500-PL2PL below relies on; `sendStandby` is implemented here for every writer), implemented for real by:
+    - `MclBusWriter.*` — MK1's real frame content (MCL or PL style, see `MclMasterVariant`)
+    - `PlBusWriter.*` — MK2's real frame content (including its extra trailing pulse and the optional mute pin - see [Beolab 3500 Mk II](#beolab-3500-mk-ii))
   - `MclData.*` — frame parsing/building (header fields, device mapping, Sound/SelectSource frame construction) — parsing is confirmed against MK1 only; the builders don't take a `BL3500Version` (each subclass above just calls them with different arguments)
   - `GpioOutputs.*` — the downstream per-source and navigation-key GPIO outputs, shared since they're hardware-side, not protocol-specific (MK1 only for now). `handleNavKeys()` recognizes Left/Right/Stop notify frames and drives the matching `KEY_PINS[]` output instead of a source reply (see [navigation key outputs](#schematic-navigation-key-outputs) below)
 
 ## How it works
 
-1. `BusReader` continuously decodes bus traffic and hands complete frames to `loop()`.
+1. `BusReader` continuously decodes bus traffic and hands complete frames to `loop()`. Our own transmissions come back over the shared wire and are dropped there (`BusWriter::consumeEcho`); every other frame goes through the sniffer (`BusSniff::logFrame`) before anything else looks at it.
 2. `MclData` parses each frame's header and, if it matches the Beolab 3500's short notify pattern, resolves which source was requested (`device = data + 192`, cross-checked against the full Beo4 command table — see source comments for how that formula was derived).
 3. `GpioOutputs::handleNavKeys()` intercepts Left/Right/Stop and drives a `KEY_PINS[]` output (see [navigation key outputs](#schematic-navigation-key-outputs) above) instead of a source reply.
 4. `loop()` calls `writer->sendSource(device, track)` (see `common/MclBusWriter.cpp`), which replies with a SelectSource frame for the requested device, as a real Beocenter 2300 would.
 5. One GPIO per audio source is also driven HIGH for whichever source is currently active (`GpioOutputs::setActiveSourcePin()`, called from `main-standalone.cpp` right after `writer->sendSource()`) — meant for a separate relay/routing board to pick up which physical audio input should be live, with no protocol knowledge needed on that side.
 
+
+## Serial commands and log output
+
+Type `?` (or `help`) in the serial monitor (115200 baud) for this list; the firmware prints a hint at start-up.
+
+| Command | What it does |
+|---|---|
+| `<source> [track]` | select a source, e.g. `cd 6`, `radio` (tv radio v.aux a.aux v.tape dvd sat pc a.tape cd phono a.tape2 cd2, or a device number 192..215) |
+| `off` | switch off - MCL: the whole system; MK2: the display only |
+| `standby` (`alloff`, `allstandby`) | Beo4 ALL STANDBY frames (untested reference, does not switch off an MCL setup) |
+| `init` / `init <value>` | send the init sequence / an init with a test value |
+| `vol <value>` | set the volume (MK2 only, display only) |
+| `mute 1` / `mute 0` | mute on (MK2 pin LOW) / off (HIGH) (MK2 only) |
+| `verbose` / `v` | toggle the sniffer's verbose mode |
+| `?` / `help` | this list |
+
+Every action is logged as a **trigger** followed by the indented **response** of the writer:
+
+```
+[cmd] cd 6                        <- typed on Serial
+   -> MCL sends: source CD, track 6
+[BL] key CD                       <- a key on the Beolab 3500's own remote (MK1)
+   -> MCL sends: source CD, track 1
+   -> output CD: GPIO43
+[cmd] mute 1
+   -> output mute: GPIO26 LOW
+```
+
+Nothing is logged between the pulses of a frame - logging happens before the first or after the last pulse.
+
+### Sniffer
+
+While the firmware runs on MK1 it also listens: every frame on the bus that isn't our own echo is decoded and printed, so a real Master can be watched next to our own triggers. The gap to the previous frame is shown in ms:
+
+```
+[+397ms] [MASTER PL] Sound VOLUME = 18  (47 bit) | hex: 33 4E B0 09 82 [0101000]
+[+398ms] [MASTER PL] SelectSource CD: activate seek=0 value=0  (48 bit) | hex: ...
+[+120ms] [MASTER MCL] SelectSource Radio: volume seek=108 value=34  (40 bit) | hex: ...
+[+50ms]  [MASTER ?] unknown cmd 49  (31 bit) | hex: ...
+```
+
+- The Master style (`PL` / `MCL`) is inferred from the frame's ValueType (72/64 = MCL-style volume and channel/track pair, 96 = PL-style activate, a Sound frame = PL) - not confirmed by a second source.
+- Short, garbled and empty captures (e.g. the 1-bit `0` a Master's trailing pulse leaves behind) are hidden by default; `verbose` shows them as `[RX short]` with bits and hex.
+- MK2 has no receive path, so the sniffer only exists on MK1.
+- For deeper captures (raw RMT timing) the sister project `BeoPowerlinkDisplay` has a fuller sniffer.
 
 ## Beolab3500-PL2PL
 

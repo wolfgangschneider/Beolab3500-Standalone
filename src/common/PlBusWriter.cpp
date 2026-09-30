@@ -38,10 +38,8 @@ void PlBusWriter::sendVol(uint8_t value) {
 // MclBusWriter::sendOff's PL variant), plus the trailing pulse every MK2
 // frame type needs.
 void PlBusWriter::sendOff() {
- // mute(true); // same display handling as init (assumed, to be tested)
   sendFrame(MclData::buildSelectSourceBits(193, 96, 2, 0));
   pulse(1); // MKII trailing pulse
-  //mute(false);
   Serial.println("   -> PL sends: OFF (activate seek=2 value=0) (only display)");
 }
 
@@ -52,12 +50,10 @@ void PlBusWriter::sendOff() {
 // commented out below, not currently sent.
 void PlBusWriter::sendInit() {
 
-  //mute(true); // mute pin LOW during the init sequence - needed for the display
   sendFrame("0011000111100111111100000000100"); // Command=49, unrecognized, no known build formula - literal capture off BW1 (Beolink Wireless), frame 1 of the real 5-frame power-on sequence (rest below)
   pulse(1); // MKII trailing pulse - confirmed required for init only, not other frame types
-  Serial.println("   -> PL sends: init"); // after the last pulse, before the pin is released
-  sendMute(0);
- // mute(false); // released again after the init sequence
+  Serial.println("   -> PL sends: init"); // after the last pulse
+  sendMute(0); // mute pin released (HIGH) after init
 
   /*
   captured from Beolink Wireless 1
