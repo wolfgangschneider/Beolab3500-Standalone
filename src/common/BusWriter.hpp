@@ -23,11 +23,7 @@
 // begin()/sendFrame()/pulse() live ONLY here, not virtual, not
 // overridden anywhere - the low-level wire framing genuinely doesn't
 // differ between revisions. sendSource()/sendVol()/sendInit() are
-// virtual with harmless "not available" defaults (not pure virtual -
-// on purpose: that keeps BusWriter itself concretely instantiable, so
-// Beolab3500-PL2PL can use it directly without pulling in MclBusWriter/
-// PlBusWriter/MclData just to get a compilable type - see
-// main-pl2pl.cpp, which never calls these three anyway).
+// virtual with harmless "not available" defaults (not pure virtual).
 class BusWriter {
 public:
   explicit BusWriter(gpio_num_t pin);

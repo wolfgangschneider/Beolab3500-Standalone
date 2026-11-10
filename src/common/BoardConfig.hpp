@@ -30,6 +30,7 @@ constexpr gpio_num_t MCL_TX_PIN       = GPIO_NUM_25;
 constexpr gpio_num_t MK2_MUTE_PIN     = GPIO_NUM_26;
 constexpr gpio_num_t MK2_EXT_MUTE_PIN = GPIO_NUM_33;
 constexpr gpio_num_t MK2_DETECTED_PIN = GPIO_NUM_32;
+constexpr gpio_num_t MK2_DISPLAY_OFF_PIN = GPIO_NUM_18; // jumper, work in progress - shared with KEY_PIN_RIGHT (MK1)
 
 constexpr gpio_num_t KEY_PIN_LEFT     = GPIO_NUM_5;
 constexpr gpio_num_t KEY_PIN_RIGHT    = GPIO_NUM_18;
@@ -70,6 +71,7 @@ constexpr gpio_num_t MCL_TX_PIN       = GPIO_NUM_3;
 constexpr gpio_num_t MK2_MUTE_PIN     = GPIO_NUM_5;
 constexpr gpio_num_t MK2_EXT_MUTE_PIN = GPIO_NUM_9;
 constexpr gpio_num_t MK2_DETECTED_PIN = GPIO_NUM_43;
+constexpr gpio_num_t MK2_DISPLAY_OFF_PIN = GPIO_NUM_7;  // jumper, work in progress - shared with KEY_PIN_RIGHT (MK1)
 
 constexpr gpio_num_t KEY_PIN_LEFT     = GPIO_NUM_5;
 constexpr gpio_num_t KEY_PIN_RIGHT    = GPIO_NUM_7;
@@ -109,6 +111,7 @@ constexpr gpio_num_t MCL_TX_PIN       = GPIO_NUM_9;
 constexpr gpio_num_t MK2_MUTE_PIN     = GPIO_NUM_10;
 constexpr gpio_num_t MK2_EXT_MUTE_PIN = GPIO_NUM_12;
 constexpr gpio_num_t MK2_DETECTED_PIN = GPIO_NUM_3;//GPIO_NUM_43;
+constexpr gpio_num_t MK2_DISPLAY_OFF_PIN = GPIO_NUM_11; // jumper, work in progress - shared with KEY_PIN_RIGHT (MK1)
 
 constexpr gpio_num_t KEY_PIN_LEFT     = GPIO_NUM_10;
 constexpr gpio_num_t KEY_PIN_RIGHT    = GPIO_NUM_11;

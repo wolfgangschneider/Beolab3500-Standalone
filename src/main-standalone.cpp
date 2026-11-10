@@ -106,7 +106,7 @@ void setup() {
     Serial.printf("MK2 detected via GPIO%d\n", (int) MK2_DETECTED_PIN);
     blVersion = BL3500Version::MK2;
   }
-
+   //blVersion = BL3500Version::MK2;
   // blVersion is now final - MK1/MK2 setup differs from here on,
   // including which concrete writer type gets constructed below (see
   // writer's declaration above for why this can't happen earlier).
@@ -137,7 +137,7 @@ void setup() {
   // to and no decode path in loop() to drain it (see file header).
 
   pinMode(MK2_MUTE_PIN, OUTPUT);
-  pinMode(MK2_EXT_MUTE_PIN, INPUT_PULLDOWN);
+  pinMode(MK2_EXT_MUTE_PIN, INPUT_PULLUP);
 
   // sendInit() releases MK2_MUTE_PIN (HIGH) at its end; loop()'s
   // mute-mirror takes over from there.
@@ -156,7 +156,7 @@ void loop() {
 #endif
 
   if (blVersion == BL3500Version::MK2) {
-    // external mute source (HIGH = mute) -> MK2's own mute pin (Beolab
+    // external mute source (LOW = mute) -> MK2's own mute pin (Beolab
     // pin 4) - WIP, source not pinned down yet. MK2-gated on purpose: MK2_MUTE_PIN/
     // MK2_EXT_MUTE_PIN share physical GPIOs with MK1-only KEY_PIN_LEFT/
     // STOP (see GpioOutputs.hpp) - safe since MK1 and MK2 code never
@@ -164,7 +164,7 @@ void loop() {
     // Mirrored only when the external mute signal CHANGES (not every tick), so a value
     // set by the "mute 1|0" command isn't overwritten a millisecond later.
     static bool lastMk2Mute = false; // init leaves the pin HIGH = not muted
-    bool mk2Mute = digitalRead(MK2_EXT_MUTE_PIN) == HIGH;
+    bool mk2Mute = digitalRead(MK2_EXT_MUTE_PIN) == LOW;
     if (mk2Mute != lastMk2Mute) {
       lastMk2Mute = mk2Mute;
       digitalWrite(MK2_MUTE_PIN, !mk2Mute); // mirror the external mute signal to the MK2's own mute pin
